@@ -225,7 +225,7 @@ export default function CuraManage() {
     setAiInput("");
     setAiLoading(true);
     try {
-      const res=await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:SYSTEM_PROMPT,messages:[...aiMsgs,msg].slice(-16)})});
+      const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:SYSTEM_PROMPT,messages:[...aiMsgs,msg].slice(-16)})});
       const data=await res.json();
       setAiMsgs(p=>[...p,{role:"assistant",content:data.content?.[0]?.text||"Error."}]);
     } catch{setAiMsgs(p=>[...p,{role:"assistant",content:"Error de conexión."}]);}
@@ -245,7 +245,7 @@ export default function CuraManage() {
       const isImage=file.type.startsWith("image/"),isPDF=file.type==="application/pdf";
       if(!isImage&&!isPDF){setDocResult({error:"Use PDF o imagen."});setDocLoading(false);return;}
       const content=[isImage?{type:"image",source:{type:"base64",media_type:file.type,data:base64}}:{type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}},{type:"text",text:"Extrae toda la información relevante: nombre, número ID, fechas, tipo de documento. Formato estructurado."}];
-      try{const res=await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content}]})});const data=await res.json();setDocResult({text:data.content?.[0]?.text||"No se pudo extraer.",filename:file.name});}
+      try{const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content}]})});const data=await res.json();setDocResult({text:data.content?.[0]?.text||"No se pudo extraer.",filename:file.name});}
       catch{setDocResult({error:"Error al procesar."});}
       setDocLoading(false);
     };
