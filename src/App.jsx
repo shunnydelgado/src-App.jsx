@@ -222,12 +222,28 @@ export default function CuraManage() {
     reader.readAsDataURL(file);
   }
 
+  async function compressImage(dataUrl, maxWidth, quality) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let w = img.width, h = img.height;
+      if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.src = dataUrl;
+  });
+}
   async function scanPassport() {
     if(!passportPreview) return;
     setPassportScanning(true);
     try {
-      const base64 = passportPreview.split(",")[1];
-      const mediaType = passportPreview.startsWith("data:image/png") ? "image/png" : "image/jpeg";
+// Compress image before sending
+const compressed = await compressImage(passportPreview, 1200, 0.85);
+const base64 = compressed.split(",")[1];
+const mediaType = "image/jpeg";
       const res = await fetch("/.netlify/functions/claude", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
