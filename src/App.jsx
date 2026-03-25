@@ -225,59 +225,74 @@ export default function CuraManage() {
   }
 
   // ── SCAN PASSPORT with Google Vision ──────────────────────────────────────
-  async function scanPassport() {
-    if (!passportPreview) return;
-    setScanStep("scanning");
-    try {
-      // Compress image
-      const compressed = await compressImage(passportPreview, 1600, 0.92);
-      const base64 = compressed.split(",")[1];
+ async function scanPassport() {
+  if (!passportPreview) return;
+  setScanStep("scanning");
+  try {
+    const compressed = await compressImage(passportPreview, 1200, 0.85);
+    const base64 = compressed.split(",")[1];
 
-      const res = await fetch("/.netlify/functions/claude", {
+    // Call Google Vision directly from browser
+    const visionRes = await fetch(
+      "https://vision.googleapis.com/v1/images:annotate?key=AIzaSyDfwwYYgV2C9aSNOUbXzbi0qiwj7_2CyVM",
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "passport_scan", image: base64 })
-      });
-
-      const data = await res.json();
-      const rawText = data.content?.[0]?.text || "{}";
-
-      let parsed = {};
-      try {
-        const cleaned = rawText.replace(/```json|```/g,"").trim();
-        const match = cleaned.match(/\{[\s\S]*\}/);
-        if (match) parsed = JSON.parse(match[0]);
-      } catch(e) { console.error("Parse error:", rawText); }
-
-      if (parsed.error || (!parsed.name && !parsed.passport)) {
-        throw new Error(t("No se pudo leer el pasaporte. Verifica la imagen e intenta de nuevo.","Could not read passport. Check image and try again."));
+        body: JSON.stringify({
+          requests: [{
+            image: { content: base64 },
+            features: [{ type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 }]
+          }]
+        })
       }
+    );
+    const visionData = await visionRes.json();
+    const fullText = visionData.responses?.[0]?.fullTextAnnotation?.text ||
+                     visionData.responses?.[0]?.textAnnotations?.[0]?.description || "";
 
-      const nextId = `CUR-${String(clients.length+1).padStart(3,"0")}`;
-      setForm({
-        client_id: nextId,
-        name: parsed.name||"",
-        nationality: parsed.nationality||"",
-        birthdate: parsed.birthdate||"",
-        passport: parsed.passport||"",
-        expiry: "",
-        type: "permiso", status: "proceso",
-        total: "", paid: "0",
-        email: "", phone: "", entry_date: "", emergency_contact: "", address: "",
-        notes: `Escaneado ${new Date().toLocaleDateString("es")}. Pasaporte vence: ${parsed.expiry||"N/A"}${parsed.gender?` · ${parsed.gender}`:""}${parsed.birth_place?` · ${parsed.birth_place}`:""}`,
-        documents: ["Pasaporte vigente"],
-      });
-
-      closePassportModal();
-      setModal({ mode:"add" });
-      showToast(t("✓ Datos extraídos con Google Vision","✓ Data extracted with Google Vision"));
-
-    } catch(e) {
-      showToast(e.message, false);
-      setScanStep("preview");
+    if (!fullText || fullText.length < 10) {
+      throw new Error(t("No se detectó texto. Mejor iluminación y enfoque.","No text detected. Better lighting and focus."));
     }
-  }
 
+    // Send OCR text to Netlify to parse with Gemini
+    const parseRes = await fetch("/.netlify/functions/claude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "parse_passport_text", text: fullText })
+    });
+    const parseData = await parseRes.json();
+    const rawText = parseData.content?.[0]?.text || "{}";
+
+    let parsed = {};
+    try {
+      const cleaned = rawText.replace(/```json|```/g,"").trim();
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+    } catch(e) {}
+
+    if (!parsed.name && !parsed.passport) {
+      throw new Error(t("No se pudieron extraer datos. Intenta de nuevo.","Could not extract data. Try again."));
+    }
+
+    const nextId = `CUR-${String(clients.length+1).padStart(3,"0")}`;
+    setForm({
+      client_id: nextId, name: parsed.name||"", nationality: parsed.nationality||"",
+      birthdate: parsed.birthdate||"", passport: parsed.passport||"", expiry: "",
+      type: "permiso", status: "proceso", total: "", paid: "0",
+      email: "", phone: "", entry_date: "", emergency_contact: "", address: "",
+      notes: `Escaneado ${new Date().toLocaleDateString("es")}. Pasaporte vence: ${parsed.expiry||"N/A"}${parsed.gender?` · ${parsed.gender}`:""}`,
+      documents: ["Pasaporte vigente"],
+    });
+
+    closePassportModal();
+    setModal({ mode:"add" });
+    showToast(t("✓ Datos extraídos con Google Vision","✓ Data extracted with Google Vision"));
+
+  } catch(e) {
+    showToast(e.message, false);
+    setScanStep("preview");
+  }
+}
   function openPassportModal() { setPassportModal(true); setPassportPreview(null); setScanStep("choose"); }
   function closePassportModal() { stopCamera(); setPassportModal(false); setPassportPreview(null); setScanStep("choose"); }
 
