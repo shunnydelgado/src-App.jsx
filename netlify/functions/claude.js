@@ -16,11 +16,14 @@ exports.handler = async function(event) {
       if (typeof m.content === "string") {
         return { role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] };
       }
-      // Handle array content (documents, images)
       const parts = m.content.map(part => {
         if (part.type === "text") return { text: part.text };
-        if (part.type === "image") return { inlineData: { mimeType: part.source.media_type, data: part.source.data } };
-        if (part.type === "document") return { inlineData: { mimeType: "application/pdf", data: part.source.data } };
+        if (part.type === "image") {
+          return { inlineData: { mimeType: part.source?.media_type || "image/jpeg", data: part.source?.data || part.data } };
+        }
+        if (part.type === "document") {
+          return { inlineData: { mimeType: "application/pdf", data: part.source?.data || part.data } };
+        }
         return { text: JSON.stringify(part) };
       });
       return { role: m.role === "assistant" ? "model" : "user", parts };
@@ -28,7 +31,7 @@ exports.handler = async function(event) {
 
     const requestBody = {
       contents,
-      generationConfig: { maxOutputTokens: 1500, temperature: 0.7 },
+      generationConfig: { maxOutputTokens: 1500, temperature: 0.2 },
     };
 
     if (body.system) {
@@ -41,7 +44,7 @@ exports.handler = async function(event) {
     );
 
     const data = await response.json();
-    console.log("Gemini response:", JSON.stringify(data).slice(0, 300));
+    console.log("Gemini response:", JSON.stringify(data).slice(0, 500));
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo obtener respuesta.";
 
     return {
