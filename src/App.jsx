@@ -202,10 +202,58 @@ export default function CuraManage() {
     stopCamera();setScanStep("preview");
   }
   async function handleFileUpload(e) {
-    const file=e.target.files[0];if(!file) return;
+    const file=e.target.files[0]; if(!file) return;
+    e.target.value="";
+
+    // PDF — send base64 to Netlify directly
+    if(file.type==="application/pdf"||file.name.toLowerCase().endsWith(".pdf")) {
+      setScanStep("scanning");
+      try {
+        const arrayBuffer=await file.arrayBuffer();
+        const bytes=new Uint8Array(arrayBuffer);
+        let binary="";
+        const chunkSize=8192;
+        for(let i=0;i<bytes.byteLength;i+=chunkSize){
+          binary+=String.fromCharCode(...bytes.subarray(i,i+chunkSize));
+        }
+        const base64pdf=btoa(binary);
+        const res=await fetch("/.netlify/functions/claude",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({mode:"passport_scan",image:base64pdf,isPDF:true})
+        });
+        const data=await res.json();
+        const rawText=data.content?.[0]?.text||"{}";
+        let parsed={};
+        try{
+          const cleaned=rawText.replace(/```json|```/g,"").trim();
+          const match=cleaned.match(/\{[\s\S]*\}/);
+          if(match) parsed=JSON.parse(match[0]);
+        }catch(err){}
+        if(!parsed.name&&!parsed.passport) throw new Error(t("No se pudieron extraer datos. Intenta con una imagen JPG.","Could not extract data. Try a JPG image."));
+        const nextId=`CUR-${String(clients.length+1).padStart(3,"0")}`;
+        setForm({
+          client_id:nextId,name:parsed.name||"",nationality:parsed.nationality||"",
+          birthdate:parsed.birthdate||"",passport:parsed.passport||"",expiry:"",
+          type:"permiso",status:"proceso",total:"",paid:"0",
+          email:"",phone:"",entry_date:"",emergency_contact:"",address:"",
+          notes:`Escaneado ${new Date().toLocaleDateString("es")}. Pasaporte vence: ${parsed.expiry||"N/A"}${parsed.gender?` · ${parsed.gender}`:""}${parsed.birth_place?` · ${parsed.birth_place}`:""}`,
+          documents:["Pasaporte vigente"],
+        });
+        closePassportModal();
+        setModal({mode:"add"});
+        showToast(t("✓ Datos extraídos del PDF","✓ Data extracted from PDF"));
+      } catch(err){
+        showToast(err.message,false);
+        setScanStep("choose");
+      }
+      return;
+    }
+
+    // Image — show preview
     const reader=new FileReader();
     reader.onload=ev=>{setPassportPreview(ev.target.result);setScanStep("preview");};
-    reader.readAsDataURL(file);e.target.value="";
+    reader.readAsDataURL(file);
   }
 
   // ── SCAN PASSPORT — sends compressed image to Netlify → Google Vision ──────
