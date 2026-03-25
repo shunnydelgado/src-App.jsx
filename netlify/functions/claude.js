@@ -19,10 +19,15 @@ exports.handler = async function(event) {
       const parts = m.content.map(part => {
         if (part.type === "text") return { text: part.text };
         if (part.type === "image") {
-          return { inlineData: { mimeType: part.source?.media_type || "image/jpeg", data: part.source?.data || part.data } };
+          // Strip data URL prefix if present
+          let data = part.source?.data || part.data || "";
+          if (data.includes(",")) data = data.split(",")[1];
+          return { inlineData: { mimeType: "image/jpeg", data } };
         }
         if (part.type === "document") {
-          return { inlineData: { mimeType: "application/pdf", data: part.source?.data || part.data } };
+          let data = part.source?.data || part.data || "";
+          if (data.includes(",")) data = data.split(",")[1];
+          return { inlineData: { mimeType: "application/pdf", data } };
         }
         return { text: JSON.stringify(part) };
       });
@@ -31,7 +36,7 @@ exports.handler = async function(event) {
 
     const requestBody = {
       contents,
-      generationConfig: { maxOutputTokens: 1500, temperature: 0.2 },
+      generationConfig: { maxOutputTokens: 1500, temperature: 0.1 },
     };
 
     if (body.system) {
@@ -44,7 +49,17 @@ exports.handler = async function(event) {
     );
 
     const data = await response.json();
-    console.log("Gemini response:", JSON.stringify(data).slice(0, 500));
+    console.log("Gemini response:", JSON.stringify(data).slice(0, 800));
+    
+    if (data.error) {
+      console.log("Gemini error details:", JSON.stringify(data.error));
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ content: [{ text: `Error de Gemini: ${data.error.message}` }] }),
+      };
+    }
+    
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo obtener respuesta.";
 
     return {
