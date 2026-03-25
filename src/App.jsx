@@ -3,16 +3,12 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveCo
 
 const SUPABASE_URL = "https://tfatwczcufvmthuolfjv.supabase.co";
 const SUPABASE_KEY = "sb_publishable_-S2VtEoXw1lbuSXROU4_jw_Q2JDABWP";
+const VISION_KEY = "AIzaSyDfwwYYgV2C9aSNOUbXzbi0qiwj7_2CyVM";
 
 async function supabaseReq(method, path, body) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {
     method,
-    headers: {
-      "apikey": SUPABASE_KEY,
-      "Authorization": `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "application/json",
-      "Prefer": "return=representation",
-    },
+    headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -44,7 +40,7 @@ const REQUIRED_DOCS = {
   contabilidad: ["Registro mercantil","RIF o número fiscal","Estados de cuenta","Facturas del período","Nómina de empleados","Contrato de servicios"],
 };
 
-async function compressImage(dataUrl, maxWidth = 1600, quality = 0.92) {
+async function compressImage(dataUrl, maxWidth = 1200, quality = 0.85) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -113,7 +109,7 @@ function exportToPDF(client, lang) {
   const win = window.open("","_blank");
   win.document.write(html);
   win.document.close();
-  setTimeout(()=>win.print(), 500);
+  setTimeout(()=>win.print(),500);
 }
 
 export default function CuraManage() {
@@ -134,7 +130,6 @@ export default function CuraManage() {
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
-  // Passport scanner
   const [passportModal, setPassportModal] = useState(false);
   const [passportPreview, setPassportPreview] = useState(null);
   const [scanStep, setScanStep] = useState("choose");
@@ -148,15 +143,12 @@ export default function CuraManage() {
 
   function showToast(msg, ok=true) {
     setToast({msg,ok});
-    setTimeout(()=>setToast(null), 4000);
+    setTimeout(()=>setToast(null),4000);
   }
 
   async function load() {
-    try {
-      setLoading(true);
-      const data = await db.getAll();
-      setClients(data);
-    } catch(e) { showToast("Error: "+e.message, false); }
+    try { setLoading(true); const data=await db.getAll(); setClients(data); }
+    catch(e) { showToast("Error: "+e.message,false); }
     finally { setLoading(false); }
   }
 
@@ -164,15 +156,15 @@ export default function CuraManage() {
   useEffect(()=>{ if(aiRef.current) aiRef.current.scrollTop=aiRef.current.scrollHeight; },[aiMsgs,aiLoading]);
   useEffect(()=>()=>stopCamera(),[]);
 
-  const totalDebt = clients.reduce((a,c)=>a+Math.max(0,(c.total||0)-(c.paid||0)),0);
-  const totalPaid = clients.reduce((a,c)=>a+(c.paid||0),0);
-  const totalBilled = clients.reduce((a,c)=>a+(c.total||0),0);
-  const expiring = clients.filter(c=>c.expiry&&(new Date(c.expiry)-Date.now())<30*86400000&&c.status!=="aprobado").length;
-  const statusData = Object.entries(STATUS_CFG).map(([k,v])=>({name:lang==="es"?v.label:v.labelEn,value:clients.filter(c=>c.status===k).length,color:v.color})).filter(d=>d.value>0);
-  const typeData = Object.entries(TYPE_CFG).map(([k,v])=>({name:lang==="es"?v.label:v.labelEn,value:clients.filter(c=>c.type===k).length,color:v.color})).filter(d=>d.value>0);
-  const payData = [{name:t("Cobrado","Collected"),value:totalPaid,fill:"#4ade80"},{name:t("Pendiente","Pending"),value:totalDebt,fill:"#f87171"}];
+  const totalDebt=clients.reduce((a,c)=>a+Math.max(0,(c.total||0)-(c.paid||0)),0);
+  const totalPaid=clients.reduce((a,c)=>a+(c.paid||0),0);
+  const totalBilled=clients.reduce((a,c)=>a+(c.total||0),0);
+  const expiring=clients.filter(c=>c.expiry&&(new Date(c.expiry)-Date.now())<30*86400000&&c.status!=="aprobado").length;
+  const statusData=Object.entries(STATUS_CFG).map(([k,v])=>({name:lang==="es"?v.label:v.labelEn,value:clients.filter(c=>c.status===k).length,color:v.color})).filter(d=>d.value>0);
+  const typeData=Object.entries(TYPE_CFG).map(([k,v])=>({name:lang==="es"?v.label:v.labelEn,value:clients.filter(c=>c.type===k).length,color:v.color})).filter(d=>d.value>0);
+  const payData=[{name:t("Cobrado","Collected"),value:totalPaid,fill:"#4ade80"},{name:t("Pendiente","Pending"),value:totalDebt,fill:"#f87171"}];
 
-  const notifs = [];
+  const notifs=[];
   clients.forEach(c=>{
     if(!c.expiry||c.status==="aprobado") return;
     const days=Math.round((new Date(c.expiry)-Date.now())/86400000);
@@ -183,7 +175,7 @@ export default function CuraManage() {
     if(debt>0&&debt===c.total) notifs.push({urgent:false,icon:"💰",title:`${c.name}`,sub:`ANG ${debt} ${t("sin pagos","no payments")}`,date:"",client:c});
   });
 
-  const filtered = clients.filter(c=>{
+  const filtered=clients.filter(c=>{
     const q=search.toLowerCase();
     return(!q||c.name.toLowerCase().includes(q)||(c.client_id||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q))
       &&(!filterType||c.type===filterType)&&(!filterStatus||c.status===filterStatus);
@@ -192,165 +184,152 @@ export default function CuraManage() {
   // ── CAMERA ────────────────────────────────────────────────────────────────
   async function startCamera() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal:"environment" }, width:{ideal:3840}, height:{ideal:2160} }
-      });
-      streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject=stream; await videoRef.current.play(); }
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:3840},height:{ideal:2160}}});
+      streamRef.current=stream;
+      if(videoRef.current){videoRef.current.srcObject=stream;await videoRef.current.play();}
       setScanStep("camera");
-    } catch(e) {
-      showToast(t("No se pudo acceder a la cámara. Usa 'Subir archivo'.","Camera not available. Use 'Upload file'."), false);
-    }
+    } catch(e) { showToast(t("No se pudo acceder a la cámara. Usa 'Subir archivo'.","Camera unavailable. Use 'Upload file'."),false); }
   }
-
   function stopCamera() {
-    if (streamRef.current) { streamRef.current.getTracks().forEach(tr=>tr.stop()); streamRef.current=null; }
+    if(streamRef.current){streamRef.current.getTracks().forEach(tr=>tr.stop());streamRef.current=null;}
   }
-
   function capturePhoto() {
-    if (!videoRef.current||!canvasRef.current) return;
-    const v=videoRef.current, c=canvasRef.current;
-    c.width=v.videoWidth; c.height=v.videoHeight;
+    if(!videoRef.current||!canvasRef.current) return;
+    const v=videoRef.current,c=canvasRef.current;
+    c.width=v.videoWidth;c.height=v.videoHeight;
     c.getContext("2d").drawImage(v,0,0);
     setPassportPreview(c.toDataURL("image/jpeg",0.95));
-    stopCamera(); setScanStep("preview");
+    stopCamera();setScanStep("preview");
   }
-
   async function handleFileUpload(e) {
-    const file=e.target.files[0]; if(!file) return;
+    const file=e.target.files[0];if(!file) return;
     const reader=new FileReader();
-    reader.onload=ev=>{ setPassportPreview(ev.target.result); setScanStep("preview"); };
-    reader.readAsDataURL(file);
-    e.target.value="";
+    reader.onload=ev=>{setPassportPreview(ev.target.result);setScanStep("preview");};
+    reader.readAsDataURL(file);e.target.value="";
   }
 
-  // ── SCAN PASSPORT with Google Vision ──────────────────────────────────────
- async function scanPassport() {
-  if (!passportPreview) return;
-  setScanStep("scanning");
-  try {
-    const compressed = await compressImage(passportPreview, 1200, 0.85);
-    const base64 = compressed.split(",")[1];
-
-    // Call Google Vision directly from browser
-    const visionRes = await fetch(
-      "https://vision.googleapis.com/v1/images:annotate?key=AIzaSyDfwwYYgV2C9aSNOUbXzbi0qiwj7_2CyVM",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requests: [{
-            image: { content: base64 },
-            features: [{ type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 }]
-          }]
-        })
-      }
-    );
-    const visionData = await visionRes.json();
-    const fullText = visionData.responses?.[0]?.fullTextAnnotation?.text ||
-                     visionData.responses?.[0]?.textAnnotations?.[0]?.description || "";
-
-    if (!fullText || fullText.length < 10) {
-      throw new Error(t("No se detectó texto. Mejor iluminación y enfoque.","No text detected. Better lighting and focus."));
-    }
-
-    // Send OCR text to Netlify to parse with Gemini
-    const parseRes = await fetch("/.netlify/functions/claude", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "parse_passport_text", text: fullText })
-    });
-    const parseData = await parseRes.json();
-    const rawText = parseData.content?.[0]?.text || "{}";
-
-    let parsed = {};
+  // ── SCAN PASSPORT — calls Google Vision directly from browser ─────────────
+  async function scanPassport() {
+    if(!passportPreview) return;
+    setScanStep("scanning");
     try {
-      const cleaned = rawText.replace(/```json|```/g,"").trim();
-      const match = cleaned.match(/\{[\s\S]*\}/);
-      if (match) parsed = JSON.parse(match[0]);
-    } catch(e) {}
+      // Compress image
+      const compressed=await compressImage(passportPreview,1200,0.85);
+      const base64=compressed.split(",")[1];
 
-    if (!parsed.name && !parsed.passport) {
-      throw new Error(t("No se pudieron extraer datos. Intenta de nuevo.","Could not extract data. Try again."));
+      // Call Google Vision directly from browser (avoids Netlify body size limit)
+      const visionRes=await fetch(
+        `https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`,
+        {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            requests:[{
+              image:{content:base64},
+              features:[{type:"DOCUMENT_TEXT_DETECTION",maxResults:1}]
+            }]
+          })
+        }
+      );
+      const visionData=await visionRes.json();
+      const fullText=visionData.responses?.[0]?.fullTextAnnotation?.text||
+                     visionData.responses?.[0]?.textAnnotations?.[0]?.description||"";
+
+      if(!fullText||fullText.length<10) {
+        throw new Error(t("No se detectó texto. Asegúrate de tener buena iluminación y que el pasaporte llene la imagen.","No text detected. Good lighting and fill the frame."));
+      }
+
+      // Send OCR text to Netlify/Gemini to structure it
+      const parseRes=await fetch("/.netlify/functions/claude",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({mode:"parse_passport_text",text:fullText})
+      });
+      const parseData=await parseRes.json();
+      const rawText=parseData.content?.[0]?.text||"{}";
+
+      let parsed={};
+      try {
+        const cleaned=rawText.replace(/```json|```/g,"").trim();
+        const match=cleaned.match(/\{[\s\S]*\}/);
+        if(match) parsed=JSON.parse(match[0]);
+      } catch(e){}
+
+      if(!parsed.name&&!parsed.passport) {
+        throw new Error(t("No se pudieron extraer datos del pasaporte. Intenta de nuevo con mejor imagen.","Could not extract data. Try again with better image."));
+      }
+
+      const nextId=`CUR-${String(clients.length+1).padStart(3,"0")}`;
+      setForm({
+        client_id:nextId,name:parsed.name||"",nationality:parsed.nationality||"",
+        birthdate:parsed.birthdate||"",passport:parsed.passport||"",expiry:"",
+        type:"permiso",status:"proceso",total:"",paid:"0",
+        email:"",phone:"",entry_date:"",emergency_contact:"",address:"",
+        notes:`Escaneado ${new Date().toLocaleDateString("es")}. Pasaporte vence: ${parsed.expiry||"N/A"}${parsed.gender?` · ${parsed.gender}`:""}`,
+        documents:["Pasaporte vigente"],
+      });
+      closePassportModal();
+      setModal({mode:"add"});
+      showToast(t("✓ Datos extraídos con Google Vision","✓ Data extracted with Google Vision"));
+    } catch(e) {
+      showToast(e.message,false);
+      setScanStep("preview");
     }
-
-    const nextId = `CUR-${String(clients.length+1).padStart(3,"0")}`;
-    setForm({
-      client_id: nextId, name: parsed.name||"", nationality: parsed.nationality||"",
-      birthdate: parsed.birthdate||"", passport: parsed.passport||"", expiry: "",
-      type: "permiso", status: "proceso", total: "", paid: "0",
-      email: "", phone: "", entry_date: "", emergency_contact: "", address: "",
-      notes: `Escaneado ${new Date().toLocaleDateString("es")}. Pasaporte vence: ${parsed.expiry||"N/A"}${parsed.gender?` · ${parsed.gender}`:""}`,
-      documents: ["Pasaporte vigente"],
-    });
-
-    closePassportModal();
-    setModal({ mode:"add" });
-    showToast(t("✓ Datos extraídos con Google Vision","✓ Data extracted with Google Vision"));
-
-  } catch(e) {
-    showToast(e.message, false);
-    setScanStep("preview");
   }
-}
-  function openPassportModal() { setPassportModal(true); setPassportPreview(null); setScanStep("choose"); }
-  function closePassportModal() { stopCamera(); setPassportModal(false); setPassportPreview(null); setScanStep("choose"); }
+
+  function openPassportModal(){setPassportModal(true);setPassportPreview(null);setScanStep("choose");}
+  function closePassportModal(){stopCamera();setPassportModal(false);setPassportPreview(null);setScanStep("choose");}
 
   // ── FORM ──────────────────────────────────────────────────────────────────
-  function openAdd() {
-    setForm({ client_id:`CUR-${String(clients.length+1).padStart(3,"0")}`, type:"permiso", status:"proceso", total:"", paid:"0", expiry:"", name:"", email:"", phone:"", nationality:"", birthdate:"", passport:"", entry_date:"", emergency_contact:"", address:"", notes:"", documents:[] });
-    setModal({ mode:"add" });
+  function openAdd(){
+    setForm({client_id:`CUR-${String(clients.length+1).padStart(3,"0")}`,type:"permiso",status:"proceso",total:"",paid:"0",expiry:"",name:"",email:"",phone:"",nationality:"",birthdate:"",passport:"",entry_date:"",emergency_contact:"",address:"",notes:"",documents:[]});
+    setModal({mode:"add"});
   }
-  function openEdit(c) {
-    setForm({ ...c, total:String(c.total||""), paid:String(c.paid||""), expiry:c.expiry||"", birthdate:c.birthdate||"", entry_date:c.entry_date||"", documents:c.documents||[] });
-    setModal({ mode:"edit", id:c.id });
+  function openEdit(c){
+    setForm({...c,total:String(c.total||""),paid:String(c.paid||""),expiry:c.expiry||"",birthdate:c.birthdate||"",entry_date:c.entry_date||"",documents:c.documents||[]});
+    setModal({mode:"edit",id:c.id});
   }
-  async function saveClient() {
-    if (!form.name?.trim()) { showToast(t("El nombre es requerido","Name required"), false); return; }
+  async function saveClient(){
+    if(!form.name?.trim()){showToast(t("El nombre es requerido","Name required"),false);return;}
     setSaving(true);
     const data={client_id:form.client_id,name:form.name,type:form.type,status:form.status,expiry:form.expiry||null,total:parseFloat(form.total)||0,paid:parseFloat(form.paid)||0,email:form.email,notes:form.notes,phone:form.phone,nationality:form.nationality,birthdate:form.birthdate||null,passport:form.passport,entry_date:form.entry_date||null,emergency_contact:form.emergency_contact,address:form.address,documents:form.documents||[]};
     try {
-      if (modal.mode==="add") { await db.insert(data); showToast(t("Cliente guardado ✓","Client saved ✓")); }
-      else { await db.update(modal.id,data); showToast(t("Actualizado ✓","Updated ✓")); }
-      await load(); setModal(null);
-    } catch(e) { showToast("Error: "+e.message, false); }
+      if(modal.mode==="add"){await db.insert(data);showToast(t("Cliente guardado ✓","Client saved ✓"));}
+      else{await db.update(modal.id,data);showToast(t("Actualizado ✓","Updated ✓"));}
+      await load();setModal(null);
+    } catch(e){showToast("Error: "+e.message,false);}
     setSaving(false);
   }
-  async function deleteClient() {
-    if (!window.confirm(t("¿Eliminar?","Delete?"))) return;
-    try { await db.remove(modal.id); showToast(t("Eliminado","Deleted")); await load(); setModal(null); }
-    catch { showToast("Error",false); }
+  async function deleteClient(){
+    if(!window.confirm(t("¿Eliminar?","Delete?"))) return;
+    try{await db.remove(modal.id);showToast(t("Eliminado","Deleted"));await load();setModal(null);}
+    catch{showToast("Error",false);}
   }
-  function toggleDoc(doc) {
+  function toggleDoc(doc){
     const docs=form.documents||[];
     setForm(p=>({...p,documents:docs.includes(doc)?docs.filter(d=>d!==doc):[...docs,doc]}));
   }
-  function openGmail(c) {
+  function openGmail(c){
     const sub=encodeURIComponent(`CuraManage - ${c.client_id} - ${c.name}`);
     const body=encodeURIComponent(`Estimado/a ${c.name},\n\nMe comunico en relación a su trámite.\n\nSaludos,\nCuraManage`);
     window.open(`https://mail.google.com/mail/?view=cm&to=${c.email||""}&su=${sub}&body=${body}`,"_blank");
   }
 
   // ── AI ────────────────────────────────────────────────────────────────────
-  function buildSystemPrompt() {
+  function buildSystemPrompt(){
     const list=clients.map(c=>`- ${c.name} | ${c.client_id} | ${c.type} | ${c.status} | vence:${c.expiry||"N/A"} | deuda:ANG ${(c.total||0)-(c.paid||0)}`).join("\n");
-    return `Eres el asistente IA de CuraManage, Curaçao. Gestión de permisos de trabajo, residencia y contabilidad.
-
-CLIENTES:
-${list}
-
-ACCIONES (agrega al FINAL si el usuario pide actualizar):
+    return `Eres el asistente IA de CuraManage, Curaçao. Permisos de trabajo, residencia y contabilidad.
+CLIENTES:\n${list}
+ACCIONES (agrega al FINAL si piden actualizar):
 [ACTION:{"type":"update_status","client_id":"CUR-XXX","value":"proceso|pendiente|aprobado|rechazado"}]
 [ACTION:{"type":"add_payment","client_id":"CUR-XXX","amount":500}]
 [ACTION:{"type":"update_field","client_id":"CUR-XXX","field":"notes","value":"texto"}]
-
 Responde en el idioma del usuario. Conciso y profesional.`;
   }
-
-  async function sendAI(text) {
-    if (!text.trim()||aiLoading) return;
+  async function sendAI(text){
+    if(!text.trim()||aiLoading) return;
     const msg={role:"user",content:text};
-    setAiMsgs(p=>[...p,msg]); setAiInput(""); setAiLoading(true);
+    setAiMsgs(p=>[...p,msg]);setAiInput("");setAiLoading(true);
     try {
       const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:buildSystemPrompt(),max_tokens:1000,messages:[...aiMsgs,msg].slice(-16)})});
       const data=await res.json();
@@ -358,10 +337,9 @@ Responde en el idioma del usuario. Conciso y profesional.`;
       const m=reply.match(/\[ACTION:(\{.*?\})\]/);
       if(m){try{const a=JSON.parse(m[1]);reply=reply.replace(/\[ACTION:\{.*?\}\]/,"").trim();setPendingAction(a);}catch{}}
       setAiMsgs(p=>[...p,{role:"assistant",content:reply}]);
-    } catch { setAiMsgs(p=>[...p,{role:"assistant",content:"Error de conexión."}]); }
+    } catch{setAiMsgs(p=>[...p,{role:"assistant",content:"Error de conexión."}]);}
     setAiLoading(false);
   }
-
   useEffect(()=>{
     if(!pendingAction) return;
     const action=pendingAction;
@@ -373,7 +351,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
         if(action.type==="update_status") upd={status:action.value};
         else if(action.type==="add_payment") upd={paid:Math.min((client.paid||0)+action.amount,client.total||9999)};
         else if(action.type==="update_field") upd={[action.field]:action.value};
-        await db.update(client.id,upd); await load();
+        await db.update(client.id,upd);await load();
         showToast(`✓ ${client.name} ${t("actualizado","updated")}`);
       }catch{showToast("Error al actualizar",false);}
       setPendingAction(null);
@@ -498,20 +476,19 @@ Responde en el idioma del usuario. Conciso y profesional.`;
         ))}
       </div>
       <div style={{padding:"10px 12px",borderTop:"1px solid rgba(99,102,241,0.15)",display:"flex",gap:7,alignItems:"flex-end",flexShrink:0}}>
-        <textarea id="ai-in" style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:10,padding:"9px 12px",fontSize:13,color:"#f0f0f5",fontFamily:"inherit",outline:"none",resize:"none",lineHeight:1.4}} value={aiInput} rows={1} placeholder={t("Escribe o da un comando...","Type or give a command...")} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAI(aiInput);}}}/>
+        <textarea id="ai-in" style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:10,padding:"9px 12px",fontSize:13,color:"#f0f0f5",fontFamily:"inherit",outline:"none",resize:"none",lineHeight:1.4}} value={aiInput} rows={1} placeholder={t("Escribe o da un comando...","Type or command...")} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAI(aiInput);}}}/>
         <button style={{width:40,height:40,borderRadius:10,background:aiLoading||!aiInput.trim()?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#6366f1,#8b5cf6)",border:"none",color:aiLoading||!aiInput.trim()?"rgba(255,255,255,0.3)":"#fff",cursor:aiLoading||!aiInput.trim()?"not-allowed":"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} disabled={aiLoading||!aiInput.trim()} onClick={()=>sendAI(aiInput)}>↑</button>
       </div>
     </>
   );
 
-  // ── PASSPORT MODAL ────────────────────────────────────────────────────────
-  const PASSPORT_MODAL = passportModal&&(
+  const PASSPORT_MODAL=passportModal&&(
     <div style={C.overlay} onClick={e=>{if(e.target===e.currentTarget)closePassportModal();}}>
       <div style={{...C.modal,maxHeight:"96vh"}} onClick={e=>e.stopPropagation()}>
         <div style={C.mHead}>
           <div>
             <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:15,fontWeight:700}}>📷 {t("Escanear pasaporte","Scan passport")}</div>
-            <div style={{fontSize:11,color:"rgba(74,222,128,0.8)",marginTop:2}}>✓ Google Cloud Vision · OCR especializado</div>
+            <div style={{fontSize:11,color:"rgba(74,222,128,0.8)",marginTop:2}}>✓ Google Cloud Vision OCR</div>
           </div>
           <button style={C.mClose} onClick={closePassportModal}>×</button>
         </div>
@@ -527,55 +504,44 @@ Responde en el idioma del usuario. Conciso y profesional.`;
                 <button style={{...C.card,border:"2px dashed rgba(99,102,241,0.5)",background:"rgba(99,102,241,0.06)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:12,padding:"28px 16px",borderRadius:16,width:"100%"}} onClick={()=>fileInputRef.current?.click()}>
                   <span style={{fontSize:44}}>🗂️</span>
                   <div style={{fontWeight:700,fontSize:15}}>{t("Subir archivo","Upload file")}</div>
-                  <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",textAlign:"center"}}>{t("Foto o PDF del pasaporte","Photo or PDF")}</div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",textAlign:"center"}}>{t("Foto o PDF","Photo or PDF")}</div>
                 </button>
               </div>
               <input ref={fileInputRef} type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={handleFileUpload}/>
               <div style={{...C.card,padding:"14px 16px",background:"rgba(74,222,128,0.04)",borderColor:"rgba(74,222,128,0.2)"}}>
-                <div style={{fontSize:12,color:"rgba(74,222,128,0.9)",fontWeight:600,marginBottom:8}}>🔍 Google Cloud Vision OCR</div>
+                <div style={{fontSize:12,color:"rgba(74,222,128,0.9)",fontWeight:600,marginBottom:8}}>💡 {t("Para mejores resultados","For best results")}</div>
                 <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",lineHeight:1.7}}>
-                  • {t("Buena iluminación, sin reflejos ni sombras","Good lighting, no glare or shadows")}<br/>
-                  • {t("Captura la página con foto y datos (página 2)","Capture data page with photo (page 2)")}<br/>
-                  • {t("El pasaporte debe llenar la imagen","Passport should fill most of image")}<br/>
-                  • {t("Imagen nítida y en horizontal","Sharp image, landscape orientation")}
+                  • {t("Buena iluminación, sin reflejos","Good lighting, no glare")}<br/>
+                  • {t("Captura la página con foto y datos","Capture the data page with photo")}<br/>
+                  • {t("Pasaporte debe llenar la imagen","Passport should fill the frame")}<br/>
+                  • {t("Imagen nítida, sin movimiento","Sharp image, no blur")}
                 </div>
               </div>
             </div>
           )}
-
           {scanStep==="camera"&&(
             <div>
               <div style={{position:"relative",borderRadius:16,overflow:"hidden",background:"#000",marginBottom:16,lineHeight:0}}>
                 <video ref={videoRef} style={{width:"100%",display:"block",maxHeight:"55vh",objectFit:"cover"}} playsInline muted autoPlay/>
                 <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
                   <div style={{width:"94%",height:"68%",position:"relative"}}>
-                    {[{top:0,left:0,bt:"borderTopWidth",bl:"borderLeftWidth",br1:"6px 0 0 0"},{top:0,right:0,bt:"borderTopWidth",bl:"borderRightWidth",br1:"0 6px 0 0"},{bottom:0,left:0,bt:"borderBottomWidth",bl:"borderLeftWidth",br1:"0 0 0 6px"},{bottom:0,right:0,bt:"borderBottomWidth",bl:"borderRightWidth",br1:"0 0 6px 0"}].map((pos,i)=>{
-                      const s={position:"absolute",width:32,height:32,borderColor:"#f59e0b",borderStyle:"solid",borderWidth:0,borderRadius:pos.br1};
-                      s[pos.bt]=4; s[pos.bl]=4;
-                      const p={};
-                      if(pos.top!==undefined)p.top=pos.top;
-                      if(pos.bottom!==undefined)p.bottom=pos.bottom;
-                      if(pos.left!==undefined)p.left=pos.left;
-                      if(pos.right!==undefined)p.right=pos.right;
-                      return <div key={i} style={{...s,...p}}/>;
-                    })}
+                    {[[{top:0,left:0},{borderTopWidth:4,borderLeftWidth:4,borderRadius:"6px 0 0 0"}],[{top:0,right:0},{borderTopWidth:4,borderRightWidth:4,borderRadius:"0 6px 0 0"}],[{bottom:0,left:0},{borderBottomWidth:4,borderLeftWidth:4,borderRadius:"0 0 0 6px"}],[{bottom:0,right:0},{borderBottomWidth:4,borderRightWidth:4,borderRadius:"0 0 6px 0"}]].map(([pos,border],i)=>(
+                      <div key={i} style={{position:"absolute",...pos,width:32,height:32,borderColor:"#f59e0b",borderStyle:"solid",borderWidth:0,...border}}/>
+                    ))}
                     <div style={{position:"absolute",inset:0,boxShadow:"0 0 0 1000px rgba(0,0,0,0.5)",pointerEvents:"none"}}/>
                   </div>
                 </div>
                 <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(transparent,rgba(0,0,0,0.75))",padding:"20px 16px 10px",textAlign:"center"}}>
-                  <div style={{fontSize:13,color:"rgba(255,255,255,0.9)",fontWeight:500}}>{t("Centra el pasaporte dentro del marco","Center passport within frame")}</div>
+                  <div style={{fontSize:13,color:"rgba(255,255,255,0.9)",fontWeight:500}}>{t("Centra el pasaporte en el marco","Center passport in frame")}</div>
                 </div>
               </div>
               <canvas ref={canvasRef} style={{display:"none"}}/>
               <div style={{display:"flex",gap:12}}>
-                <button style={{...C.btnG,flex:1,padding:"12px",fontSize:13,justifyContent:"center",display:"flex"}} onClick={()=>{stopCamera();setScanStep("choose");}}>← {t("Volver","Back")}</button>
-                <button style={{...C.btnScan,flex:2,padding:"14px"}} onClick={capturePhoto}>
-                  <span style={{fontSize:22}}>📸</span> {t("Capturar foto","Capture photo")}
-                </button>
+                <button style={{...C.btnG,flex:1,padding:"12px",justifyContent:"center",display:"flex"}} onClick={()=>{stopCamera();setScanStep("choose");}}>← {t("Volver","Back")}</button>
+                <button style={{...C.btnScan,flex:2,padding:"14px"}} onClick={capturePhoto}><span style={{fontSize:22}}>📸</span> {t("Capturar","Capture")}</button>
               </div>
             </div>
           )}
-
           {scanStep==="preview"&&(
             <div>
               <div style={{position:"relative",marginBottom:16,borderRadius:14,overflow:"hidden",border:"2px solid rgba(99,102,241,0.4)",background:"#000",lineHeight:0}}>
@@ -583,30 +549,19 @@ Responde en el idioma del usuario. Conciso y profesional.`;
                 <button style={{position:"absolute",top:10,right:10,...C.btnG,padding:"5px 10px",fontSize:12}} onClick={()=>setScanStep("choose")}>✕ {t("Cambiar","Change")}</button>
               </div>
               <div style={{...C.card,padding:"12px 14px",background:"rgba(74,222,128,0.05)",borderColor:"rgba(74,222,128,0.2)",marginBottom:14}}>
-                <div style={{fontSize:12,color:"#4ade80",fontWeight:600}}>✓ {t("Imagen lista · Google Vision procesará el texto","Image ready · Google Vision will process text")}</div>
+                <div style={{fontSize:12,color:"#4ade80",fontWeight:600}}>✓ {t("Lista para Google Vision","Ready for Google Vision")}</div>
               </div>
               <div style={{display:"flex",gap:12}}>
-                <button style={{...C.btnG,flex:1,padding:"12px",fontSize:13,justifyContent:"center",display:"flex"}} onClick={()=>setScanStep("choose")}>← {t("Reintentar","Retry")}</button>
-                <button style={{...C.btnScan,flex:2,padding:"14px"}} onClick={scanPassport}>
-                  🔍 {t("Extraer datos","Extract data")}
-                </button>
+                <button style={{...C.btnG,flex:1,padding:"12px",justifyContent:"center",display:"flex"}} onClick={()=>setScanStep("choose")}>← {t("Reintentar","Retry")}</button>
+                <button style={{...C.btnScan,flex:2,padding:"14px"}} onClick={scanPassport}>🔍 {t("Extraer datos","Extract data")}</button>
               </div>
             </div>
           )}
-
           {scanStep==="scanning"&&(
             <div style={{textAlign:"center",padding:"30px 20px"}}>
               <div style={{fontSize:52,marginBottom:16,animation:"spin 1.5s linear infinite",display:"inline-block"}}>⟳</div>
               <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontWeight:700,fontSize:18,color:"#c084fc",marginBottom:8}}>{t("Analizando con Google Vision...","Analyzing with Google Vision...")}</div>
-              <div style={{fontSize:13,color:"rgba(255,255,255,0.45)",lineHeight:1.6,marginBottom:16}}>
-                {t("OCR especializado leyendo el pasaporte.","Specialized OCR reading passport.")}<br/>
-                {t("Puede tardar 5-15 segundos.","May take 5-15 seconds.")}
-              </div>
-              <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap"}}>
-                {[t("OCR","OCR"),t("Detectando texto","Detecting text"),t("Extrayendo datos","Extracting data"),t("Estructurando","Structuring")].map((s,i)=>(
-                  <div key={i} style={{fontSize:11,color:"rgba(74,222,128,0.7)",padding:"4px 10px",borderRadius:20,border:"1px solid rgba(74,222,128,0.3)",animation:`glow ${1+i*0.4}s infinite`}}>{s}</div>
-                ))}
-              </div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.45)",lineHeight:1.6}}>{t("Puede tardar 5-15 segundos","May take 5-15 seconds")}</div>
             </div>
           )}
         </div>
@@ -614,7 +569,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
     </div>
   );
 
-  const CLIENT_FOLDER = clientModal&&(
+  const CLIENT_FOLDER=clientModal&&(
     <div style={C.overlay} onClick={e=>{if(e.target===e.currentTarget)setClientModal(null);}}>
       <div style={C.modal} onClick={e=>e.stopPropagation()}>
         <div style={C.mHead}>
@@ -630,7 +585,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
         </div>
         <div style={{padding:"18px 20px"}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-            {[{label:t("Teléfono","Phone"),value:clientModal.phone},{label:t("Nacionalidad","Nationality"),value:clientModal.nationality},{label:t("Nacimiento","Birthday"),value:clientModal.birthdate},{label:t("Pasaporte","Passport"),value:clientModal.passport},{label:t("Entrada Curaçao","Entry Curaçao"),value:clientModal.entry_date},{label:"Email",value:clientModal.email},{label:t("Dirección","Address"),value:clientModal.address,full:true},{label:t("Emergencia","Emergency"),value:clientModal.emergency_contact,full:true}].map((f,i)=>(
+            {[{label:t("Teléfono","Phone"),value:clientModal.phone},{label:t("Nacionalidad","Nationality"),value:clientModal.nationality},{label:t("Nacimiento","Birthday"),value:clientModal.birthdate},{label:t("Pasaporte","Passport"),value:clientModal.passport},{label:t("Entrada Curaçao","Entry"),value:clientModal.entry_date},{label:"Email",value:clientModal.email},{label:t("Dirección","Address"),value:clientModal.address,full:true},{label:t("Emergencia","Emergency"),value:clientModal.emergency_contact,full:true}].map((f,i)=>(
               <div key={i} style={{gridColumn:f.full?"1/-1":"auto",background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 12px",border:"1px solid rgba(99,102,241,0.15)"}}>
                 <div style={{fontSize:10,color:"rgba(192,132,252,0.5)",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:2}}>{f.label}</div>
                 <div style={{fontSize:13}}>{f.value||<span style={{color:"rgba(255,255,255,0.2)"}}>—</span>}</div>
@@ -658,13 +613,13 @@ Responde en el idioma del usuario. Conciso y profesional.`;
     </div>
   );
 
-  const FORM_MODAL = modal&&(
+  const FORM_MODAL=modal&&(
     <div style={C.overlay} onClick={e=>{if(e.target===e.currentTarget)setModal(null);}}>
       <div style={C.modal} onClick={e=>e.stopPropagation()}>
         <div style={C.mHead}>
           <div>
             <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:15,fontWeight:700}}>{modal.mode==="add"?t("Nuevo cliente","New client"):t("Editar cliente","Edit client")}</div>
-            {modal.mode==="add"&&form.passport&&<div style={{fontSize:11,color:"#4ade80",marginTop:2}}>✓ Google Vision · {t("Datos extraídos automáticamente","Data extracted automatically")}</div>}
+            {modal.mode==="add"&&form.passport&&<div style={{fontSize:11,color:"#4ade80",marginTop:2}}>✓ Google Vision · {t("Datos extraídos","Data extracted")}</div>}
           </div>
           <button style={C.mClose} onClick={()=>setModal(null)}>×</button>
         </div>
@@ -719,71 +674,40 @@ Responde en el idioma del usuario. Conciso y profesional.`;
     </div>
   );
 
-  // Shared section content
-  function SectionContent(){
-    return(
-      <>
-        {section==="dashboard"&&<>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
-            {[{label:t("Total clientes","Total clients"),value:clients.length,color:"#c084fc"},{label:t("En proceso","In process"),value:clients.filter(c=>c.status==="proceso").length,color:"#38bdf8"},{label:t("Por cobrar","Outstanding"),value:`ANG ${totalDebt}`,color:"#fb923c"},{label:t("Vencen pronto","Expiring"),value:expiring,color:"#f87171"}].map((s,i)=>(
-              <div key={i} style={{...C.card,borderColor:s.color+"33"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</div><div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:26,fontWeight:800,color:s.color}}>{s.value}</div></div>
-            ))}
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:20}}>
-            {[{title:t("Por estatus","By status"),data:statusData},{title:t("Por tipo","By type"),data:typeData}].map((ch,ci)=>(
-              <div key={ci} style={C.card}>
-                <div style={{fontSize:11,fontWeight:600,color:"rgba(192,132,252,0.7)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>{ch.title}</div>
-                <ResponsiveContainer width="100%" height={120}><PieChart><Pie data={ch.data} cx="50%" cy="50%" innerRadius={28} outerRadius={50} paddingAngle={3} dataKey="value">{ch.data.map((e,i)=><Cell key={i} fill={e.color} stroke="transparent"/>)}</Pie><Tooltip contentStyle={{background:"#1a1a2e",border:"1px solid rgba(99,102,241,0.3)",borderRadius:8,fontSize:11}}/></PieChart></ResponsiveContainer>
-                <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:4}}>{ch.data.map((d,i)=><div key={i} style={{fontSize:10,color:d.color,display:"flex",alignItems:"center",gap:3}}><span style={{width:5,height:5,borderRadius:"50%",background:d.color,display:"inline-block"}}/>{d.name}:{d.value}</div>)}</div>
-              </div>
-            ))}
-            <div style={C.card}>
-              <div style={{fontSize:11,fontWeight:600,color:"rgba(192,132,252,0.7)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>{t("Cobros ANG","Payments ANG")}</div>
-              <ResponsiveContainer width="100%" height={120}><BarChart data={payData} barSize={26}><XAxis dataKey="name" tick={{fontSize:10,fill:"rgba(255,255,255,0.4)"}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:10,fill:"rgba(255,255,255,0.4)"}} axisLine={false} tickLine={false}/><Tooltip contentStyle={{background:"#1a1a2e",border:"1px solid rgba(99,102,241,0.3)",borderRadius:8,fontSize:11}}/><Bar dataKey="value" radius={[5,5,0,0]}>{payData.map((d,i)=><Cell key={i} fill={d.fill}/>)}</Bar></BarChart></ResponsiveContainer>
-            </div>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-            <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:14,fontWeight:700}}>{t("Clientes recientes","Recent clients")}</div>
-            <button style={{...C.btnG,marginLeft:"auto",fontSize:11}} onClick={()=>setSection("clients")}>{t("Ver todos →","View all →")}</button>
-          </div>
-          <div style={{...C.card,padding:0,overflow:"hidden"}}>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1.2fr 1.1fr 1fr 70px 80px 100px",borderBottom:"1px solid rgba(99,102,241,0.2)",background:"rgba(99,102,241,0.08)"}}>
-              {[t("Cliente","Client"),t("Tipo","Type"),t("Estatus","Status"),t("Vence","Expires"),t("Pago","Pmt"),t("Deuda","Debt"),""].map((h,i)=><div key={i} style={{padding:"10px 14px",fontSize:10,fontWeight:600,color:"rgba(192,132,252,0.7)",textTransform:"uppercase",letterSpacing:"0.07em"}}>{h}</div>)}
-            </div>
-            {clients.length===0?<div style={{textAlign:"center",padding:"28px",color:"rgba(255,255,255,0.3)"}}>{t("Sin clientes — escanea un pasaporte 📷","No clients — scan a passport 📷")}</div>:clients.slice(0,6).map(c=><DRow key={c.id} c={c}/>)}
-          </div>
-        </>}
-        {section==="clients"&&<>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-            <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:14,fontWeight:700}}>{t("Todos los clientes","All clients")} <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400}}>({filtered.length})</span></div>
-            <input style={{...C.searchBar,maxWidth:240}} placeholder={t("Buscar...","Search...")} value={search} onChange={e=>setSearch(e.target.value)}/>
-            <select style={C.filterSel} value={filterType} onChange={e=>setFilterType(e.target.value)}><option value="">{t("Tipos","Types")}</option><option value="permiso">Permiso</option><option value="residencia">Residencia</option><option value="contabilidad">Contabilidad</option></select>
-            <select style={C.filterSel} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}><option value="">{t("Todos","All")}</option><option value="proceso">Proceso</option><option value="pendiente">Pendiente</option><option value="aprobado">Aprobado</option><option value="rechazado">Rechazado</option></select>
-          </div>
-          {filtered.length===0?<div style={{textAlign:"center",padding:"40px",color:"rgba(255,255,255,0.3)"}}>{t("Sin resultados","No results")}</div>:filtered.map(c=><ClientCard key={c.id} c={c}/>)}
-        </>}
-        {section==="payments"&&<>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}}>
-            {[{label:t("Facturado","Billed"),value:`ANG ${totalBilled}`,color:"#c084fc"},{label:t("Cobrado","Collected"),value:`ANG ${totalPaid}`,color:"#4ade80"},{label:t("Por cobrar","Outstanding"),value:`ANG ${totalDebt}`,color:"#f87171"}].map((s,i)=>(
-              <div key={i} style={{...C.card,borderColor:s.color+"33"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",marginBottom:4}}>{s.label}</div><div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:22,fontWeight:800,color:s.color}}>{s.value}</div></div>
-            ))}
-          </div>
-          {[...clients].sort((a,b)=>((b.total||0)-(b.paid||0))-((a.total||0)-(a.paid||0))).map(c=><ClientCard key={c.id} c={c}/>)}
-        </>}
-        {section==="alerts"&&<>
-          {notifs.length===0?<div style={{textAlign:"center",padding:"48px",color:"rgba(255,255,255,0.3)"}}>✅ {t("Sin alertas activas","No active alerts")}</div>:notifs.map((n,i)=>(
-            <div key={i} style={{...C.card,borderColor:n.urgent?"rgba(248,113,113,0.3)":"rgba(251,191,36,0.2)",display:"flex",gap:12,marginBottom:10,cursor:"pointer"}} onClick={()=>n.client&&setClientModal(n.client)}>
-              <div style={{fontSize:20}}>{n.icon}</div>
-              <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{n.title}</div><div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginTop:2}}>{n.sub}</div></div>
-              {n.date&&<div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{new Date(n.date).toLocaleDateString("es")}</div>}
-            </div>
-          ))}
-        </>}
-      </>
-    );
-  }
-
   const NAV_ITEMS=[{key:"dashboard",icon:"⬡",es:"Panel",en:"Dashboard"},{key:"clients",icon:"◈",es:"Clientes",en:"Clients"},{key:"payments",icon:"◇",es:"Pagos",en:"Payments"},{key:"alerts",icon:"◻",es:"Alertas",en:"Alerts",badge:notifs.filter(n=>n.urgent).length}];
+
+  function DashboardContent(){
+    return(<>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
+        {[{label:t("Total clientes","Total clients"),value:clients.length,color:"#c084fc"},{label:t("En proceso","In process"),value:clients.filter(c=>c.status==="proceso").length,color:"#38bdf8"},{label:t("Por cobrar","Outstanding"),value:`ANG ${totalDebt}`,color:"#fb923c"},{label:t("Vencen pronto","Expiring"),value:expiring,color:"#f87171"}].map((s,i)=>(
+          <div key={i} style={{...C.card,borderColor:s.color+"33"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</div><div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:26,fontWeight:800,color:s.color}}>{s.value}</div></div>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:20}}>
+        {[{title:t("Por estatus","By status"),data:statusData},{title:t("Por tipo","By type"),data:typeData}].map((ch,ci)=>(
+          <div key={ci} style={C.card}>
+            <div style={{fontSize:11,fontWeight:600,color:"rgba(192,132,252,0.7)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>{ch.title}</div>
+            <ResponsiveContainer width="100%" height={120}><PieChart><Pie data={ch.data} cx="50%" cy="50%" innerRadius={28} outerRadius={50} paddingAngle={3} dataKey="value">{ch.data.map((e,i)=><Cell key={i} fill={e.color} stroke="transparent"/>)}</Pie><Tooltip contentStyle={{background:"#1a1a2e",border:"1px solid rgba(99,102,241,0.3)",borderRadius:8,fontSize:11}}/></PieChart></ResponsiveContainer>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:4}}>{ch.data.map((d,i)=><div key={i} style={{fontSize:10,color:d.color,display:"flex",alignItems:"center",gap:3}}><span style={{width:5,height:5,borderRadius:"50%",background:d.color,display:"inline-block"}}/>{d.name}:{d.value}</div>)}</div>
+          </div>
+        ))}
+        <div style={C.card}>
+          <div style={{fontSize:11,fontWeight:600,color:"rgba(192,132,252,0.7)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>{t("Cobros ANG","Payments ANG")}</div>
+          <ResponsiveContainer width="100%" height={120}><BarChart data={payData} barSize={26}><XAxis dataKey="name" tick={{fontSize:10,fill:"rgba(255,255,255,0.4)"}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:10,fill:"rgba(255,255,255,0.4)"}} axisLine={false} tickLine={false}/><Tooltip contentStyle={{background:"#1a1a2e",border:"1px solid rgba(99,102,241,0.3)",borderRadius:8,fontSize:11}}/><Bar dataKey="value" radius={[5,5,0,0]}>{payData.map((d,i)=><Cell key={i} fill={d.fill}/>)}</Bar></BarChart></ResponsiveContainer>
+        </div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+        <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:14,fontWeight:700}}>{t("Clientes recientes","Recent clients")}</div>
+        <button style={{...C.btnG,marginLeft:"auto",fontSize:11}} onClick={()=>setSection("clients")}>{t("Ver todos →","View all →")}</button>
+      </div>
+      <div style={{...C.card,padding:0,overflow:"hidden"}}>
+        <div style={{display:"grid",gridTemplateColumns:"2fr 1.2fr 1.1fr 1fr 70px 80px 100px",borderBottom:"1px solid rgba(99,102,241,0.2)",background:"rgba(99,102,241,0.08)"}}>
+          {[t("Cliente","Client"),t("Tipo","Type"),t("Estatus","Status"),t("Vence","Expires"),t("Pago","Pmt"),t("Deuda","Debt"),""].map((h,i)=><div key={i} style={{padding:"10px 14px",fontSize:10,fontWeight:600,color:"rgba(192,132,252,0.7)",textTransform:"uppercase",letterSpacing:"0.07em"}}>{h}</div>)}
+        </div>
+        {clients.length===0?<div style={{textAlign:"center",padding:"28px",color:"rgba(255,255,255,0.3)"}}>{t("Sin clientes — escanea un pasaporte 📷","No clients — scan a passport 📷")}</div>:clients.slice(0,6).map(c=><DRow key={c.id} c={c}/>)}
+      </div>
+    </>);
+  }
 
   return(
     <div style={C.app}>
@@ -837,7 +761,35 @@ Responde en el idioma del usuario. Conciso y profesional.`;
               <button style={C.btnP} onClick={()=>{setShowAI(!showAI);setTimeout(()=>document.getElementById("ai-in")?.focus(),100);}}>✦ {t("Asistente","Assistant")}</button>
             </div>
           </div>
-          <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}><SectionContent/></div>
+          <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
+            {section==="dashboard"&&<DashboardContent/>}
+            {section==="clients"&&<>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:14,fontWeight:700}}>{t("Todos los clientes","All clients")} <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400}}>({filtered.length})</span></div>
+                <input style={{...C.searchBar,maxWidth:240}} placeholder={t("Buscar...","Search...")} value={search} onChange={e=>setSearch(e.target.value)}/>
+                <select style={C.filterSel} value={filterType} onChange={e=>setFilterType(e.target.value)}><option value="">Tipos</option><option value="permiso">Permiso</option><option value="residencia">Residencia</option><option value="contabilidad">Contabilidad</option></select>
+                <select style={C.filterSel} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}><option value="">Todos</option><option value="proceso">Proceso</option><option value="pendiente">Pendiente</option><option value="aprobado">Aprobado</option><option value="rechazado">Rechazado</option></select>
+              </div>
+              {filtered.length===0?<div style={{textAlign:"center",padding:"40px",color:"rgba(255,255,255,0.3)"}}>{t("Sin resultados","No results")}</div>:filtered.map(c=><ClientCard key={c.id} c={c}/>)}
+            </>}
+            {section==="payments"&&<>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}}>
+                {[{label:t("Facturado","Billed"),value:`ANG ${totalBilled}`,color:"#c084fc"},{label:t("Cobrado","Collected"),value:`ANG ${totalPaid}`,color:"#4ade80"},{label:t("Por cobrar","Outstanding"),value:`ANG ${totalDebt}`,color:"#f87171"}].map((s,i)=>(
+                  <div key={i} style={{...C.card,borderColor:s.color+"33"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",marginBottom:4}}>{s.label}</div><div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:22,fontWeight:800,color:s.color}}>{s.value}</div></div>
+                ))}
+              </div>
+              {[...clients].sort((a,b)=>((b.total||0)-(b.paid||0))-((a.total||0)-(a.paid||0))).map(c=><ClientCard key={c.id} c={c}/>)}
+            </>}
+            {section==="alerts"&&<>
+              {notifs.length===0?<div style={{textAlign:"center",padding:"48px",color:"rgba(255,255,255,0.3)"}}>✅ {t("Sin alertas activas","No active alerts")}</div>:notifs.map((n,i)=>(
+                <div key={i} style={{...C.card,borderColor:n.urgent?"rgba(248,113,113,0.3)":"rgba(251,191,36,0.2)",display:"flex",gap:12,marginBottom:10,cursor:"pointer"}} onClick={()=>n.client&&setClientModal(n.client)}>
+                  <div style={{fontSize:20}}>{n.icon}</div>
+                  <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{n.title}</div><div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginTop:2}}>{n.sub}</div></div>
+                  {n.date&&<div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{new Date(n.date).toLocaleDateString("es")}</div>}
+                </div>
+              ))}
+            </>}
+          </div>
         </div>
         {showAI&&<div style={C.aiPanel}>{AI_PANEL}</div>}
       </div>
