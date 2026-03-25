@@ -208,42 +208,20 @@ export default function CuraManage() {
     reader.readAsDataURL(file);e.target.value="";
   }
 
-  // ── SCAN PASSPORT — calls Google Vision directly from browser ─────────────
+  // ── SCAN PASSPORT — sends compressed image to Netlify → Google Vision ──────
   async function scanPassport() {
     if(!passportPreview) return;
     setScanStep("scanning");
     try {
-      // Compress image
-      const compressed=await compressImage(passportPreview,1200,0.85);
-      const base64=compressed.split(",")[1];
+      // Compress aggressively: 800px, quality 0.65 → ~100-200KB
+      const compressed=await compressImage(passportPreview,800,0.65);
+      console.log("Compressed size KB:",Math.round(compressed.length*0.75/1024));
 
-      // Call Google Vision directly from browser (avoids Netlify body size limit)
-      const visionRes=await fetch(
-        `https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`,
-        {
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({
-            requests:[{
-              image:{content:base64},
-              features:[{type:"DOCUMENT_TEXT_DETECTION",maxResults:1}]
-            }]
-          })
-        }
-      );
-      const visionData=await visionRes.json();
-      const fullText=visionData.responses?.[0]?.fullTextAnnotation?.text||
-                     visionData.responses?.[0]?.textAnnotations?.[0]?.description||"";
-
-      if(!fullText||fullText.length<10) {
-        throw new Error(t("No se detectó texto. Asegúrate de tener buena iluminación y que el pasaporte llene la imagen.","No text detected. Good lighting and fill the frame."));
-      }
-
-      // Send OCR text to Netlify/Gemini to structure it
+      // Send to Netlify which calls Google Vision from server (no CORS issue)
       const parseRes=await fetch("/.netlify/functions/claude",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({mode:"parse_passport_text",text:fullText})
+        body:JSON.stringify({mode:"passport_scan",image:compressed})
       });
       const parseData=await parseRes.json();
       const rawText=parseData.content?.[0]?.text||"{}";
@@ -495,26 +473,19 @@ Responde en el idioma del usuario. Conciso y profesional.`;
         <div style={{padding:"20px"}}>
           {scanStep==="choose"&&(
             <div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20}}>
-                <button style={{...C.card,border:"2px dashed rgba(245,158,11,0.5)",background:"rgba(245,158,11,0.06)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:12,padding:"28px 16px",borderRadius:16,width:"100%"}} onClick={startCamera}>
-                  <span style={{fontSize:44}}>📷</span>
-                  <div style={{fontWeight:700,fontSize:15}}>{t("Tomar foto","Take photo")}</div>
-                  <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",textAlign:"center"}}>{t("Cámara del dispositivo","Device camera")}</div>
-                </button>
-                <button style={{...C.card,border:"2px dashed rgba(99,102,241,0.5)",background:"rgba(99,102,241,0.06)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:12,padding:"28px 16px",borderRadius:16,width:"100%"}} onClick={()=>fileInputRef.current?.click()}>
-                  <span style={{fontSize:44}}>🗂️</span>
-                  <div style={{fontWeight:700,fontSize:15}}>{t("Subir archivo","Upload file")}</div>
-                  <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",textAlign:"center"}}>{t("Foto o PDF","Photo or PDF")}</div>
-                </button>
-              </div>
+              <button style={{...C.card,border:"2px dashed rgba(99,102,241,0.5)",background:"rgba(99,102,241,0.06)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"36px 20px",borderRadius:16,width:"100%",marginBottom:20}} onClick={()=>fileInputRef.current?.click()}>
+                <span style={{fontSize:56}}>🗂️</span>
+                <div style={{fontWeight:700,fontSize:17}}>{t("Seleccionar archivo","Select file")}</div>
+                <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",textAlign:"center"}}>{t("Foto JPG/PNG o PDF del pasaporte","Passport JPG/PNG photo or PDF")}</div>
+              </button>
               <input ref={fileInputRef} type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={handleFileUpload}/>
               <div style={{...C.card,padding:"14px 16px",background:"rgba(74,222,128,0.04)",borderColor:"rgba(74,222,128,0.2)"}}>
                 <div style={{fontSize:12,color:"rgba(74,222,128,0.9)",fontWeight:600,marginBottom:8}}>💡 {t("Para mejores resultados","For best results")}</div>
                 <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",lineHeight:1.7}}>
-                  • {t("Buena iluminación, sin reflejos","Good lighting, no glare")}<br/>
-                  • {t("Captura la página con foto y datos","Capture the data page with photo")}<br/>
-                  • {t("Pasaporte debe llenar la imagen","Passport should fill the frame")}<br/>
-                  • {t("Imagen nítida, sin movimiento","Sharp image, no blur")}
+                  • {t("Usa la página con la foto y datos","Use the page with photo and data")}<br/>
+                  • {t("Imagen clara, sin reflejos ni sombras","Clear image, no glare or shadows")}<br/>
+                  • {t("Si es PDF, que el texto sea legible","If PDF, text must be readable")}<br/>
+                  • {t("También puedes hacer screenshot del pasaporte","You can also screenshot the passport")}
                 </div>
               </div>
             </div>
