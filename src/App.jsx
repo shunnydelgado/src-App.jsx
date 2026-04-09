@@ -3,12 +3,17 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveCo
 
 const SUPABASE_URL = "https://tfatwczcufvmthuolfjv.supabase.co";
 const SUPABASE_KEY = "sb_publishable_-S2VtEoXw1lbuSXROU4_jw_Q2JDABWP";
-const VISION_KEY = "AIzaSyDfwwYYgV2C9aSNOUbXzbi0qiwj7_2CyVM";
+const ALLOWED_EMAILS = ["maolin503@gmail.com", "ramiro.olbina@gmail.com"];
 
-async function supabaseReq(method, path, body) {
+async function supabaseReq(method, path, body, token) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {
     method,
-    headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" },
+    headers: {
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${token || SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": "return=representation",
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -16,12 +21,58 @@ async function supabaseReq(method, path, body) {
   return text ? JSON.parse(text) : [];
 }
 
-const db = {
-  getAll: () => supabaseReq("GET", "/clients?order=created_at.desc&select=*"),
-  insert: (d) => supabaseReq("POST", "/clients", d),
-  update: (id, d) => supabaseReq("PATCH", `/clients?id=eq.${id}`, d),
-  remove: (id) => supabaseReq("DELETE", `/clients?id=eq.${id}`),
-};
+async function signInWithGoogle() {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(window.location.origin)}`, {
+    headers: { "apikey": SUPABASE_KEY }
+  });
+  // Redirect to Google
+  const data = await res.json();
+  if (data.url) window.location.href = data.url;
+}
+
+async function signInWithGoogleRedirect() {
+  window.location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(window.location.origin)}&apikey=${SUPABASE_KEY}`;
+}
+
+async function getSession() {
+  // Check URL hash for token (after OAuth redirect)
+  const hash = window.location.hash;
+  if (hash && hash.includes("access_token")) {
+    const params = new URLSearchParams(hash.substring(1));
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    if (accessToken) {
+      localStorage.setItem("cm_access_token", accessToken);
+      localStorage.setItem("cm_refresh_token", refreshToken || "");
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return accessToken;
+    }
+  }
+  return localStorage.getItem("cm_access_token");
+}
+
+async function getUserFromToken(token) {
+  if (!token) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` }
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+async function signOut() {
+  const token = localStorage.getItem("cm_access_token");
+  if (token) {
+    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: "POST",
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` }
+    }).catch(()=>{});
+  }
+  localStorage.removeItem("cm_access_token");
+  localStorage.removeItem("cm_refresh_token");
+}
 
 const STATUS_CFG = {
   proceso:   { label:"En proceso",  labelEn:"In process",  color:"#38bdf8", bg:"rgba(56,189,248,0.15)" },
@@ -40,35 +91,34 @@ const REQUIRED_DOCS = {
   contabilidad: ["Registro mercantil","RIF o número fiscal","Estados de cuenta","Facturas del período","Nómina de empleados","Contrato de servicios"],
 };
 
-async function compressImage(dataUrl, maxWidth = 1200, quality = 0.85) {
+async function compressImage(dataUrl, maxWidth=1200, quality=0.85) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement("canvas");
-      let w = img.width, h = img.height;
-      if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL("image/jpeg", quality));
+      let w=img.width, h=img.height;
+      if(w>maxWidth){h=Math.round(h*maxWidth/w);w=maxWidth;}
+      canvas.width=w; canvas.height=h;
+      const ctx=canvas.getContext("2d");
+      ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h);
+      ctx.drawImage(img,0,0,w,h);
+      resolve(canvas.toDataURL("image/jpeg",quality));
     };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
+    img.onerror=()=>resolve(dataUrl);
+    img.src=dataUrl;
   });
 }
 
 function exportToPDF(client, lang) {
-  const t = (es,en) => lang==="es"?es:en;
-  const debt = (client.total||0)-(client.paid||0);
-  const docs = client.documents||[];
-  const required = REQUIRED_DOCS[client.type]||[];
-  const docsList = required.map(doc => {
-    const found = docs.includes(doc);
+  const t=(es,en)=>lang==="es"?es:en;
+  const debt=(client.total||0)-(client.paid||0);
+  const docs=client.documents||[];
+  const required=REQUIRED_DOCS[client.type]||[];
+  const docsList=required.map(doc=>{
+    const found=docs.includes(doc);
     return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${doc}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;color:${found?"#16a34a":"#dc2626"}">${found?"✓":"✗"}</td></tr>`;
   }).join("");
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
   body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0}
   .header{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:28px 36px;display:flex;justify-content:space-between;align-items:center}
   .logo{font-size:22px;font-weight:800}.logo-sub{font-size:10px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:2px;margin-top:3px}
@@ -106,13 +156,109 @@ function exportToPDF(client, lang) {
   ${required.length>0?`<div class="section"><div class="section-title">${t("Documentos","Documents")}</div>
   <table><thead><tr><th>${t("Documento","Document")}</th><th>${t("Estado","Status")}</th></tr></thead><tbody>${docsList}</tbody></table></div>`:""}
   </div><div class="footer">CuraManage · ${new Date().getFullYear()}</div></body></html>`;
-  const win = window.open("","_blank");
+  const win=window.open("","_blank");
   win.document.write(html);
   win.document.close();
   setTimeout(()=>win.print(),500);
 }
 
+// ── LOGIN SCREEN ─────────────────────────────────────────────────────────────
+function LoginScreen({onLogin}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleGoogleLogin() {
+    setLoading(true);
+    setError("");
+    try {
+      await signInWithGoogleRedirect();
+    } catch(e) {
+      setError("Error al iniciar sesión. Intenta de nuevo.");
+      setLoading(false);
+    }
+  }
+
+  return(
+    <div style={{minHeight:"100vh",background:"#0a0a0f",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',system-ui,sans-serif",padding:20}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');`}</style>
+      <div style={{width:"100%",maxWidth:400}}>
+        {/* Logo */}
+        <div style={{textAlign:"center",marginBottom:40}}>
+          <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontWeight:800,fontSize:36,background:"linear-gradient(135deg,#c084fc,#38bdf8)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",marginBottom:8}}>
+            CuraManage
+          </div>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",letterSpacing:"0.15em",textTransform:"uppercase"}}>
+            Curaçao · Gestión Integral
+          </div>
+        </div>
+
+        {/* Card */}
+        <div style={{background:"linear-gradient(135deg,rgba(26,26,46,0.95),rgba(22,33,62,0.95))",border:"1px solid rgba(99,102,241,0.3)",borderRadius:20,padding:"36px 32px",boxShadow:"0 25px 50px rgba(0,0,0,0.5)"}}>
+          <div style={{textAlign:"center",marginBottom:28}}>
+            <div style={{fontSize:16,fontWeight:600,color:"#f0f0f5",marginBottom:8}}>Bienvenida 👋</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.45)",lineHeight:1.6}}>
+              Inicia sesión con tu cuenta de Google para acceder al sistema
+            </div>
+          </div>
+
+          {error&&<div style={{background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.3)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#f87171",marginBottom:16,textAlign:"center"}}>{error}</div>}
+
+          <button
+            onClick={handleGoogleLogin}
+            disabled={loading}
+            style={{width:"100%",padding:"14px 20px",borderRadius:12,fontSize:14,fontWeight:600,cursor:loading?"not-allowed":"pointer",background:loading?"rgba(255,255,255,0.05)":"#fff",color:loading?"rgba(255,255,255,0.3)":"#1a1a1a",border:"none",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:12,transition:"all 0.2s",boxShadow:loading?"none":"0 4px 15px rgba(0,0,0,0.3)"}}>
+            {loading?(
+              <span style={{fontSize:18,animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span>
+            ):(
+              <svg width="20" height="20" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+            )}
+            {loading?"Iniciando sesión...":"Continuar con Google"}
+          </button>
+
+          <div style={{marginTop:20,padding:"12px 14px",background:"rgba(99,102,241,0.08)",borderRadius:10,border:"1px solid rgba(99,102,241,0.2)"}}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textAlign:"center",lineHeight:1.6}}>
+              🔒 Solo usuarios autorizados pueden acceder.<br/>
+              Los datos están protegidos con cifrado SSL.
+            </div>
+          </div>
+        </div>
+
+        <div style={{textAlign:"center",marginTop:20,fontSize:11,color:"rgba(255,255,255,0.2)"}}>
+          CuraManage © {new Date().getFullYear()} · Todos los derechos reservados
+        </div>
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+}
+
+// ── UNAUTHORIZED SCREEN ───────────────────────────────────────────────────────
+function UnauthorizedScreen({email, onSignOut}) {
+  return(
+    <div style={{minHeight:"100vh",background:"#0a0a0f",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',system-ui,sans-serif",padding:20}}>
+      <div style={{width:"100%",maxWidth:400,textAlign:"center"}}>
+        <div style={{fontSize:52,marginBottom:16}}>🚫</div>
+        <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontWeight:700,fontSize:22,color:"#f0f0f5",marginBottom:8}}>Acceso no autorizado</div>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.45)",marginBottom:8}}>La cuenta <strong style={{color:"#f87171"}}>{email}</strong> no tiene acceso a este sistema.</div>
+        <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",marginBottom:28}}>Contacta al administrador si crees que esto es un error.</div>
+        <button onClick={onSignOut} style={{padding:"12px 24px",borderRadius:12,fontSize:13,fontWeight:600,cursor:"pointer",background:"rgba(248,113,113,0.1)",color:"#f87171",border:"1px solid rgba(248,113,113,0.3)",fontFamily:"inherit"}}>
+          Cerrar sesión e intentar con otra cuenta
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function CuraManage() {
+  const [authState, setAuthState] = useState("loading"); // loading | login | unauthorized | app
+  const [currentUser, setCurrentUser] = useState(null);
+  const [accessToken, setAccessToken] = useState(null);
   const [lang, setLang] = useState("es");
   const [section, setSection] = useState("dashboard");
   const [clients, setClients] = useState([]);
@@ -133,13 +279,37 @@ export default function CuraManage() {
   const [passportModal, setPassportModal] = useState(false);
   const [passportPreview, setPassportPreview] = useState(null);
   const [scanStep, setScanStep] = useState("choose");
-  const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const streamRef = useRef(null);
   const aiRef = useRef(null);
   const fileInputRef = useRef(null);
 
   const t = (es,en) => lang==="es"?es:en;
+
+  // ── AUTH ──────────────────────────────────────────────────────────────────
+  useEffect(()=>{
+    async function checkAuth() {
+      const token = await getSession();
+      if (!token) { setAuthState("login"); return; }
+      const user = await getUserFromToken(token);
+      if (!user) { setAuthState("login"); return; }
+      setCurrentUser(user);
+      setAccessToken(token);
+      // Check if email is authorized
+      if (!ALLOWED_EMAILS.includes(user.email)) {
+        setAuthState("unauthorized");
+        return;
+      }
+      setAuthState("app");
+    }
+    checkAuth();
+  },[]);
+
+  async function handleSignOut() {
+    await signOut();
+    setCurrentUser(null);
+    setAccessToken(null);
+    setAuthState("login");
+  }
 
   function showToast(msg, ok=true) {
     setToast({msg,ok});
@@ -147,24 +317,26 @@ export default function CuraManage() {
   }
 
   async function load() {
-    try { setLoading(true); const data=await db.getAll(); setClients(data); }
-    catch(e) { showToast("Error: "+e.message,false); }
+    try {
+      setLoading(true);
+      const data = await supabaseReq("GET", "/clients?order=created_at.desc&select=*", null, accessToken);
+      setClients(data);
+    } catch(e) { showToast("Error: "+e.message, false); }
     finally { setLoading(false); }
   }
 
-  useEffect(()=>{ load(); },[]);
+  useEffect(()=>{ if(authState==="app") load(); },[authState]);
   useEffect(()=>{ if(aiRef.current) aiRef.current.scrollTop=aiRef.current.scrollHeight; },[aiMsgs,aiLoading]);
-  useEffect(()=>()=>stopCamera(),[]);
 
-  const totalDebt=clients.reduce((a,c)=>a+Math.max(0,(c.total||0)-(c.paid||0)),0);
-  const totalPaid=clients.reduce((a,c)=>a+(c.paid||0),0);
-  const totalBilled=clients.reduce((a,c)=>a+(c.total||0),0);
-  const expiring=clients.filter(c=>c.expiry&&(new Date(c.expiry)-Date.now())<30*86400000&&c.status!=="aprobado").length;
-  const statusData=Object.entries(STATUS_CFG).map(([k,v])=>({name:lang==="es"?v.label:v.labelEn,value:clients.filter(c=>c.status===k).length,color:v.color})).filter(d=>d.value>0);
-  const typeData=Object.entries(TYPE_CFG).map(([k,v])=>({name:lang==="es"?v.label:v.labelEn,value:clients.filter(c=>c.type===k).length,color:v.color})).filter(d=>d.value>0);
-  const payData=[{name:t("Cobrado","Collected"),value:totalPaid,fill:"#4ade80"},{name:t("Pendiente","Pending"),value:totalDebt,fill:"#f87171"}];
+  const totalDebt = clients.reduce((a,c)=>a+Math.max(0,(c.total||0)-(c.paid||0)),0);
+  const totalPaid = clients.reduce((a,c)=>a+(c.paid||0),0);
+  const totalBilled = clients.reduce((a,c)=>a+(c.total||0),0);
+  const expiring = clients.filter(c=>c.expiry&&(new Date(c.expiry)-Date.now())<30*86400000&&c.status!=="aprobado").length;
+  const statusData = Object.entries(STATUS_CFG).map(([k,v])=>({name:lang==="es"?v.label:v.labelEn,value:clients.filter(c=>c.status===k).length,color:v.color})).filter(d=>d.value>0);
+  const typeData = Object.entries(TYPE_CFG).map(([k,v])=>({name:lang==="es"?v.label:v.labelEn,value:clients.filter(c=>c.type===k).length,color:v.color})).filter(d=>d.value>0);
+  const payData = [{name:t("Cobrado","Collected"),value:totalPaid,fill:"#4ade80"},{name:t("Pendiente","Pending"),value:totalDebt,fill:"#f87171"}];
 
-  const notifs=[];
+  const notifs = [];
   clients.forEach(c=>{
     if(!c.expiry||c.status==="aprobado") return;
     const days=Math.round((new Date(c.expiry)-Date.now())/86400000);
@@ -175,37 +347,16 @@ export default function CuraManage() {
     if(debt>0&&debt===c.total) notifs.push({urgent:false,icon:"💰",title:`${c.name}`,sub:`ANG ${debt} ${t("sin pagos","no payments")}`,date:"",client:c});
   });
 
-  const filtered=clients.filter(c=>{
+  const filtered = clients.filter(c=>{
     const q=search.toLowerCase();
     return(!q||c.name.toLowerCase().includes(q)||(c.client_id||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q))
       &&(!filterType||c.type===filterType)&&(!filterStatus||c.status===filterStatus);
   });
 
-  // ── CAMERA ────────────────────────────────────────────────────────────────
-  async function startCamera() {
-    try {
-      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:3840},height:{ideal:2160}}});
-      streamRef.current=stream;
-      if(videoRef.current){videoRef.current.srcObject=stream;await videoRef.current.play();}
-      setScanStep("camera");
-    } catch(e) { showToast(t("No se pudo acceder a la cámara. Usa 'Subir archivo'.","Camera unavailable. Use 'Upload file'."),false); }
-  }
-  function stopCamera() {
-    if(streamRef.current){streamRef.current.getTracks().forEach(tr=>tr.stop());streamRef.current=null;}
-  }
-  function capturePhoto() {
-    if(!videoRef.current||!canvasRef.current) return;
-    const v=videoRef.current,c=canvasRef.current;
-    c.width=v.videoWidth;c.height=v.videoHeight;
-    c.getContext("2d").drawImage(v,0,0);
-    setPassportPreview(c.toDataURL("image/jpeg",0.95));
-    stopCamera();setScanStep("preview");
-  }
+  // ── PASSPORT ──────────────────────────────────────────────────────────────
   async function handleFileUpload(e) {
     const file=e.target.files[0]; if(!file) return;
     e.target.value="";
-
-    // PDF — send base64 to Netlify directly
     if(file.type==="application/pdf"||file.name.toLowerCase().endsWith(".pdf")) {
       setScanStep("scanning");
       try {
@@ -213,159 +364,93 @@ export default function CuraManage() {
         const bytes=new Uint8Array(arrayBuffer);
         let binary="";
         const chunkSize=8192;
-        for(let i=0;i<bytes.byteLength;i+=chunkSize){
-          binary+=String.fromCharCode(...bytes.subarray(i,i+chunkSize));
-        }
+        for(let i=0;i<bytes.byteLength;i+=chunkSize) binary+=String.fromCharCode(...bytes.subarray(i,i+chunkSize));
         const base64pdf=btoa(binary);
-        const res=await fetch("/.netlify/functions/claude",{
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({mode:"passport_scan",image:base64pdf,isPDF:true})
-        });
+        const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"passport_scan",image:base64pdf,isPDF:true})});
         const data=await res.json();
         const rawText=data.content?.[0]?.text||"{}";
         let parsed={};
-        try{
-          const cleaned=rawText.replace(/```json|```/g,"").trim();
-          const match=cleaned.match(/\{[\s\S]*\}/);
-          if(match) parsed=JSON.parse(match[0]);
-        }catch(err){}
-        if(!parsed.name&&!parsed.passport) throw new Error(t("No se pudieron extraer datos. Intenta con una imagen JPG.","Could not extract data. Try a JPG image."));
+        try{const cleaned=rawText.replace(/```json|```/g,"").trim();const match=cleaned.match(/\{[\s\S]*\}/);if(match)parsed=JSON.parse(match[0]);}catch{}
+        if(!parsed.name&&!parsed.passport) throw new Error(t("No se pudieron extraer datos. Intenta con una imagen JPG.","Could not extract data. Try a JPG."));
         const nextId=`CUR-${String(clients.length+1).padStart(3,"0")}`;
-        setForm({
-          client_id:nextId,name:parsed.name||"",nationality:parsed.nationality||"",
-          birthdate:parsed.birthdate||"",passport:parsed.passport||"",expiry:"",
-          type:"permiso",status:"proceso",total:"",paid:"0",
-          email:"",phone:"",entry_date:"",emergency_contact:"",address:"",
-          notes:`Escaneado ${new Date().toLocaleDateString("es")}. Pasaporte vence: ${parsed.expiry||"N/A"}${parsed.gender?` · ${parsed.gender}`:""}${parsed.birth_place?` · ${parsed.birth_place}`:""}`,
-          documents:["Pasaporte vigente"],
-        });
-        closePassportModal();
-        setModal({mode:"add"});
-        showToast(t("✓ Datos extraídos del PDF","✓ Data extracted from PDF"));
-      } catch(err){
-        showToast(err.message,false);
-        setScanStep("choose");
-      }
+        setForm({client_id:nextId,name:parsed.name||"",nationality:parsed.nationality||"",birthdate:parsed.birthdate||"",passport:parsed.passport||"",expiry:"",type:"permiso",status:"proceso",total:"",paid:"0",email:"",phone:"",entry_date:"",emergency_contact:"",address:"",notes:`Escaneado ${new Date().toLocaleDateString("es")}. Pasaporte vence: ${parsed.expiry||"N/A"}${parsed.gender?` · ${parsed.gender}`:""}`,documents:["Pasaporte vigente"]});
+        closePassportModal(); setModal({mode:"add"});
+        showToast(t("✓ Datos extraídos","✓ Data extracted"));
+      } catch(err){showToast(err.message,false);setScanStep("choose");}
       return;
     }
-
-    // Image — show preview
     const reader=new FileReader();
     reader.onload=ev=>{setPassportPreview(ev.target.result);setScanStep("preview");};
     reader.readAsDataURL(file);
   }
 
-  // ── SCAN PASSPORT — sends compressed image to Netlify → Google Vision ──────
   async function scanPassport() {
     if(!passportPreview) return;
     setScanStep("scanning");
     try {
-      // Compress aggressively: 800px, quality 0.65 → ~100-200KB
       const compressed=await compressImage(passportPreview,800,0.65);
-      console.log("Compressed size KB:",Math.round(compressed.length*0.75/1024));
-
-      // Send to Netlify which calls Google Vision from server (no CORS issue)
-      const parseRes=await fetch("/.netlify/functions/claude",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({mode:"passport_scan",image:compressed})
-      });
-      const parseData=await parseRes.json();
-      const rawText=parseData.content?.[0]?.text||"{}";
-
+      const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"passport_scan",image:compressed})});
+      const data=await res.json();
+      const rawText=data.content?.[0]?.text||"{}";
       let parsed={};
-      try {
-        const cleaned=rawText.replace(/```json|```/g,"").trim();
-        const match=cleaned.match(/\{[\s\S]*\}/);
-        if(match) parsed=JSON.parse(match[0]);
-      } catch(e){}
-
-      if(!parsed.name&&!parsed.passport) {
-        throw new Error(t("No se pudieron extraer datos del pasaporte. Intenta de nuevo con mejor imagen.","Could not extract data. Try again with better image."));
-      }
-
+      try{const cleaned=rawText.replace(/```json|```/g,"").trim();const match=cleaned.match(/\{[\s\S]*\}/);if(match)parsed=JSON.parse(match[0]);}catch{}
+      if(!parsed.name&&!parsed.passport) throw new Error(t("No se pudieron extraer datos.","Could not extract data."));
       const nextId=`CUR-${String(clients.length+1).padStart(3,"0")}`;
-      setForm({
-        client_id:nextId,name:parsed.name||"",nationality:parsed.nationality||"",
-        birthdate:parsed.birthdate||"",passport:parsed.passport||"",expiry:"",
-        type:"permiso",status:"proceso",total:"",paid:"0",
-        email:"",phone:"",entry_date:"",emergency_contact:"",address:"",
-        notes:`Escaneado ${new Date().toLocaleDateString("es")}. Pasaporte vence: ${parsed.expiry||"N/A"}${parsed.gender?` · ${parsed.gender}`:""}`,
-        documents:["Pasaporte vigente"],
-      });
-      closePassportModal();
-      setModal({mode:"add"});
-      showToast(t("✓ Datos extraídos con Google Vision","✓ Data extracted with Google Vision"));
-    } catch(e) {
-      showToast(e.message,false);
-      setScanStep("preview");
-    }
+      setForm({client_id:nextId,name:parsed.name||"",nationality:parsed.nationality||"",birthdate:parsed.birthdate||"",passport:parsed.passport||"",expiry:"",type:"permiso",status:"proceso",total:"",paid:"0",email:"",phone:"",entry_date:"",emergency_contact:"",address:"",notes:`Escaneado ${new Date().toLocaleDateString("es")}. Pasaporte vence: ${parsed.expiry||"N/A"}`,documents:["Pasaporte vigente"]});
+      closePassportModal(); setModal({mode:"add"});
+      showToast(t("✓ Datos extraídos","✓ Data extracted"));
+    } catch(e){showToast(e.message,false);setScanStep("preview");}
   }
 
   function openPassportModal(){setPassportModal(true);setPassportPreview(null);setScanStep("choose");}
-  function closePassportModal(){stopCamera();setPassportModal(false);setPassportPreview(null);setScanStep("choose");}
+  function closePassportModal(){setPassportModal(false);setPassportPreview(null);setScanStep("choose");}
 
   // ── FORM ──────────────────────────────────────────────────────────────────
-  function openAdd(){
-    setForm({client_id:`CUR-${String(clients.length+1).padStart(3,"0")}`,type:"permiso",status:"proceso",total:"",paid:"0",expiry:"",name:"",email:"",phone:"",nationality:"",birthdate:"",passport:"",entry_date:"",emergency_contact:"",address:"",notes:"",documents:[]});
-    setModal({mode:"add"});
-  }
-  function openEdit(c){
-    setForm({...c,total:String(c.total||""),paid:String(c.paid||""),expiry:c.expiry||"",birthdate:c.birthdate||"",entry_date:c.entry_date||"",documents:c.documents||[]});
-    setModal({mode:"edit",id:c.id});
-  }
+  function openAdd(){setForm({client_id:`CUR-${String(clients.length+1).padStart(3,"0")}`,type:"permiso",status:"proceso",total:"",paid:"0",expiry:"",name:"",email:"",phone:"",nationality:"",birthdate:"",passport:"",entry_date:"",emergency_contact:"",address:"",notes:"",documents:[]});setModal({mode:"add"});}
+  function openEdit(c){setForm({...c,total:String(c.total||""),paid:String(c.paid||""),expiry:c.expiry||"",birthdate:c.birthdate||"",entry_date:c.entry_date||"",documents:c.documents||[]});setModal({mode:"edit",id:c.id});}
+
   async function saveClient(){
-    if(!form.name?.trim()){showToast(t("El nombre es requerido","Name required"),false);return;}
+    if(!form.name?.trim()){showToast(t("Nombre requerido","Name required"),false);return;}
     setSaving(true);
     const data={client_id:form.client_id,name:form.name,type:form.type,status:form.status,expiry:form.expiry||null,total:parseFloat(form.total)||0,paid:parseFloat(form.paid)||0,email:form.email,notes:form.notes,phone:form.phone,nationality:form.nationality,birthdate:form.birthdate||null,passport:form.passport,entry_date:form.entry_date||null,emergency_contact:form.emergency_contact,address:form.address,documents:form.documents||[]};
-    try {
-      if(modal.mode==="add"){await db.insert(data);showToast(t("Cliente guardado ✓","Client saved ✓"));}
-      else{await db.update(modal.id,data);showToast(t("Actualizado ✓","Updated ✓"));}
+    try{
+      if(modal.mode==="add"){await supabaseReq("POST","/clients",data,accessToken);showToast(t("Cliente guardado ✓","Client saved ✓"));}
+      else{await supabaseReq("PATCH",`/clients?id=eq.${modal.id}`,data,accessToken);showToast(t("Actualizado ✓","Updated ✓"));}
       await load();setModal(null);
-    } catch(e){showToast("Error: "+e.message,false);}
+    }catch(e){showToast("Error: "+e.message,false);}
     setSaving(false);
   }
+
   async function deleteClient(){
     if(!window.confirm(t("¿Eliminar?","Delete?"))) return;
-    try{await db.remove(modal.id);showToast(t("Eliminado","Deleted"));await load();setModal(null);}
+    try{await supabaseReq("DELETE",`/clients?id=eq.${modal.id}`,null,accessToken);showToast(t("Eliminado","Deleted"));await load();setModal(null);}
     catch{showToast("Error",false);}
   }
-  function toggleDoc(doc){
-    const docs=form.documents||[];
-    setForm(p=>({...p,documents:docs.includes(doc)?docs.filter(d=>d!==doc):[...docs,doc]}));
-  }
-  function openGmail(c){
-    const sub=encodeURIComponent(`CuraManage - ${c.client_id} - ${c.name}`);
-    const body=encodeURIComponent(`Estimado/a ${c.name},\n\nMe comunico en relación a su trámite.\n\nSaludos,\nCuraManage`);
-    window.open(`https://mail.google.com/mail/?view=cm&to=${c.email||""}&su=${sub}&body=${body}`,"_blank");
-  }
+
+  function toggleDoc(doc){const docs=form.documents||[];setForm(p=>({...p,documents:docs.includes(doc)?docs.filter(d=>d!==doc):[...docs,doc]}));}
+  function openGmail(c){const sub=encodeURIComponent(`CuraManage - ${c.client_id} - ${c.name}`);const body=encodeURIComponent(`Estimado/a ${c.name},\n\nMe comunico en relación a su trámite.\n\nSaludos,\nCuraManage`);window.open(`https://mail.google.com/mail/?view=cm&to=${c.email||""}&su=${sub}&body=${body}`,"_blank");}
 
   // ── AI ────────────────────────────────────────────────────────────────────
   function buildSystemPrompt(){
     const list=clients.map(c=>`- ${c.name} | ${c.client_id} | ${c.type} | ${c.status} | vence:${c.expiry||"N/A"} | deuda:ANG ${(c.total||0)-(c.paid||0)}`).join("\n");
-    return `Eres el asistente IA de CuraManage, Curaçao. Permisos de trabajo, residencia y contabilidad.
-CLIENTES:\n${list}
-ACCIONES (agrega al FINAL si piden actualizar):
-[ACTION:{"type":"update_status","client_id":"CUR-XXX","value":"proceso|pendiente|aprobado|rechazado"}]
-[ACTION:{"type":"add_payment","client_id":"CUR-XXX","amount":500}]
-[ACTION:{"type":"update_field","client_id":"CUR-XXX","field":"notes","value":"texto"}]
-Responde en el idioma del usuario. Conciso y profesional.`;
+    return `Eres el asistente IA de CuraManage, Curaçao. Gestión de permisos de trabajo, residencia y contabilidad.\n\nCLIENTES:\n${list}\n\nACCIONES:\n[ACTION:{"type":"update_status","client_id":"CUR-XXX","value":"proceso|pendiente|aprobado|rechazado"}]\n[ACTION:{"type":"add_payment","client_id":"CUR-XXX","amount":500}]\n\nResponde en el idioma del usuario. Conciso y profesional.`;
   }
+
   async function sendAI(text){
     if(!text.trim()||aiLoading) return;
     const msg={role:"user",content:text};
     setAiMsgs(p=>[...p,msg]);setAiInput("");setAiLoading(true);
-    try {
+    try{
       const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:buildSystemPrompt(),max_tokens:1000,messages:[...aiMsgs,msg].slice(-16)})});
       const data=await res.json();
       let reply=data.content?.[0]?.text||"Error.";
       const m=reply.match(/\[ACTION:(\{.*?\})\]/);
       if(m){try{const a=JSON.parse(m[1]);reply=reply.replace(/\[ACTION:\{.*?\}\]/,"").trim();setPendingAction(a);}catch{}}
       setAiMsgs(p=>[...p,{role:"assistant",content:reply}]);
-    } catch{setAiMsgs(p=>[...p,{role:"assistant",content:"Error de conexión."}]);}
+    }catch{setAiMsgs(p=>[...p,{role:"assistant",content:"Error de conexión."}]);}
     setAiLoading(false);
   }
+
   useEffect(()=>{
     if(!pendingAction) return;
     const action=pendingAction;
@@ -376,10 +461,9 @@ Responde en el idioma del usuario. Conciso y profesional.`;
         let upd={};
         if(action.type==="update_status") upd={status:action.value};
         else if(action.type==="add_payment") upd={paid:Math.min((client.paid||0)+action.amount,client.total||9999)};
-        else if(action.type==="update_field") upd={[action.field]:action.value};
-        await db.update(client.id,upd);await load();
-        showToast(`✓ ${client.name} ${t("actualizado","updated")}`);
-      }catch{showToast("Error al actualizar",false);}
+        await supabaseReq("PATCH",`/clients?id=eq.${client.id}`,upd,accessToken);
+        await load();showToast(`✓ ${client.name} ${t("actualizado","updated")}`);
+      }catch{showToast("Error",false);}
       setPendingAction(null);
     }
     execute();
@@ -389,7 +473,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
     const debt=(c.total||0)-(c.paid||0);
     const missing=(REQUIRED_DOCS[c.type]||[]).filter(d=>!(c.documents||[]).includes(d));
     setShowAI(true);
-    sendAI(`Analiza: ${c.name} (${c.client_id})\nTipo: ${c.type} | Estatus: ${c.status}\nVence: ${c.expiry||"N/A"} | Deuda: ANG ${debt}\nDocs faltantes: ${missing.length>0?missing.join(", "):"Ninguno"}\nNotas: ${c.notes||"—"}\nDame análisis y próximos pasos.`);
+    sendAI(`Analiza: ${c.name} (${c.client_id})\nTipo: ${c.type} | Estatus: ${c.status}\nVence: ${c.expiry||"N/A"} | Deuda: ANG ${debt}\nDocs faltantes: ${missing.length>0?missing.join(", "):"Ninguno"}\nNotas: ${c.notes||"—"}\nAnálisis y próximos pasos.`);
   }
 
   // ── STYLES ────────────────────────────────────────────────────────────────
@@ -404,7 +488,6 @@ Responde en el idioma del usuario. Conciso y profesional.`;
     btnG:{padding:"7px 12px",borderRadius:10,fontSize:12,fontWeight:500,cursor:"pointer",background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.6)",border:"1px solid rgba(255,255,255,0.1)",fontFamily:"inherit"},
     btnD:{padding:"7px 12px",borderRadius:10,fontSize:12,cursor:"pointer",background:"rgba(248,113,113,0.1)",color:"#f87171",border:"1px solid rgba(248,113,113,0.3)",fontFamily:"inherit",fontWeight:500},
     btnS:{padding:"7px 12px",borderRadius:10,fontSize:12,cursor:"pointer",background:"rgba(74,222,128,0.1)",color:"#4ade80",border:"1px solid rgba(74,222,128,0.3)",fontFamily:"inherit",fontWeight:500},
-    btnScan:{padding:"12px 20px",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",background:"linear-gradient(135deg,#f59e0b,#ef4444)",color:"#fff",border:"none",fontFamily:"inherit",display:"flex",alignItems:"center",gap:8,justifyContent:"center",width:"100%"},
     card:{background:"linear-gradient(135deg,rgba(26,26,46,0.9),rgba(22,33,62,0.9))",border:"1px solid rgba(99,102,241,0.2)",borderRadius:14,padding:"14px 16px"},
     badge:(c)=>({display:"inline-block",padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:600,color:c.color,background:c.bg,whiteSpace:"nowrap",border:`1px solid ${c.color}33`}),
     input:{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#f0f0f5",fontFamily:"inherit",outline:"none",width:"100%"},
@@ -424,7 +507,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
     toast:(ok)=>({position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",zIndex:300,background:ok?"rgba(74,222,128,0.15)":"rgba(248,113,113,0.15)",border:`1px solid ${ok?"#4ade80":"#f87171"}`,color:ok?"#4ade80":"#f87171",padding:"12px 20px",borderRadius:12,fontSize:13,fontWeight:600,backdropFilter:"blur(10px)",whiteSpace:"nowrap",maxWidth:"90vw",textAlign:"center"}),
   };
 
-  function Badge({cfg}){ return <span style={C.badge(cfg)}>{lang==="es"?cfg.label:cfg.labelEn}</span>; }
+  function Badge({cfg}){return <span style={C.badge(cfg)}>{lang==="es"?cfg.label:cfg.labelEn}</span>;}
 
   function ClientCard({c}){
     const debt=(c.total||0)-(c.paid||0);
@@ -435,10 +518,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
     return(
       <div style={{...C.card,marginBottom:10,cursor:"pointer"}} onClick={()=>setClientModal(c)}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-          <div>
-            <div style={{fontWeight:600,fontSize:15,color:"#c084fc"}}>{c.name}</div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:1}}>{c.client_id}{c.nationality?` · ${c.nationality}`:""}</div>
-          </div>
+          <div><div style={{fontWeight:600,fontSize:15,color:"#c084fc"}}>{c.name}</div><div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:1}}>{c.client_id}{c.nationality?` · ${c.nationality}`:""}</div></div>
           <Badge cfg={STATUS_CFG[c.status]||{label:c.status,labelEn:c.status,color:"#888",bg:"#222"}}/>
         </div>
         <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
@@ -448,9 +528,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{flex:1}}>
-            <div style={{height:4,background:"rgba(255,255,255,0.08)",borderRadius:2,overflow:"hidden"}}>
-              <div style={{width:`${pct}%`,height:"100%",background:col,borderRadius:2,transition:"width 0.3s"}}/>
-            </div>
+            <div style={{height:4,background:"rgba(255,255,255,0.08)",borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:col,borderRadius:2,transition:"width 0.3s"}}/></div>
             <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:3}}>{pct}% {t("pagado","paid")} · {debt>0?`ANG ${debt} ${t("pendiente","pending")}`:"✓ al día"}</div>
           </div>
           <div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
@@ -497,12 +575,12 @@ Responde en el idioma del usuario. Conciso y profesional.`;
         {aiLoading&&<div style={{...C.aiMsg(false),padding:"10px 14px"}}><div style={{display:"flex",gap:5}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"rgba(192,132,252,0.5)",animation:`bounce 1.2s infinite ${i*0.2}s`}}/>)}</div></div>}
       </div>
       <div style={{padding:"8px 12px",display:"flex",gap:5,flexWrap:"wrap",borderTop:"1px solid rgba(99,102,241,0.15)",flexShrink:0}}>
-        {[{es:"📋 Deudas",en:"📋 Debts",p:"¿Cuáles clientes tienen deuda pendiente? Resume con montos."},{es:"⚠ Vencimientos",en:"⚠ Expirations",p:"¿Cuáles trámites vencen pronto?"},{es:"✉ Carta permiso",en:"✉ Permit letter",p:"Redacta carta de solicitud de permiso de trabajo para Curaçao, formato profesional."},{es:"💬 Recordatorio",en:"💬 Reminder",p:"Redacta recordatorio de pago profesional."}].map((b,i)=>(
-          <button key={i} style={{fontSize:11,padding:"5px 9px",borderRadius:20,border:"1px solid rgba(99,102,241,0.3)",background:"rgba(99,102,241,0.08)",color:"rgba(192,132,252,0.8)",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>sendAI(b.p)}>{lang==="es"?b.es:b.en}</button>
+        {[{es:"📋 Deudas",p:"¿Cuáles clientes tienen deuda pendiente?"},{es:"⚠ Vencimientos",p:"¿Cuáles trámites vencen pronto?"},{es:"✉ Carta permiso",p:"Redacta carta de permiso de trabajo para Curaçao."},{es:"💬 Recordatorio",p:"Redacta recordatorio de pago profesional."}].map((b,i)=>(
+          <button key={i} style={{fontSize:11,padding:"5px 9px",borderRadius:20,border:"1px solid rgba(99,102,241,0.3)",background:"rgba(99,102,241,0.08)",color:"rgba(192,132,252,0.8)",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>sendAI(b.p)}>{b.es}</button>
         ))}
       </div>
       <div style={{padding:"10px 12px",borderTop:"1px solid rgba(99,102,241,0.15)",display:"flex",gap:7,alignItems:"flex-end",flexShrink:0}}>
-        <textarea id="ai-in" style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:10,padding:"9px 12px",fontSize:13,color:"#f0f0f5",fontFamily:"inherit",outline:"none",resize:"none",lineHeight:1.4}} value={aiInput} rows={1} placeholder={t("Escribe o da un comando...","Type or command...")} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAI(aiInput);}}}/>
+        <textarea id="ai-in" style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:10,padding:"9px 12px",fontSize:13,color:"#f0f0f5",fontFamily:"inherit",outline:"none",resize:"none",lineHeight:1.4}} value={aiInput} rows={1} placeholder={t("Escribe o da un comando...","Type or give a command...")} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAI(aiInput);}}}/>
         <button style={{width:40,height:40,borderRadius:10,background:aiLoading||!aiInput.trim()?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#6366f1,#8b5cf6)",border:"none",color:aiLoading||!aiInput.trim()?"rgba(255,255,255,0.3)":"#fff",cursor:aiLoading||!aiInput.trim()?"not-allowed":"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} disabled={aiLoading||!aiInput.trim()} onClick={()=>sendAI(aiInput)}>↑</button>
       </div>
     </>
@@ -512,10 +590,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
     <div style={C.overlay} onClick={e=>{if(e.target===e.currentTarget)closePassportModal();}}>
       <div style={{...C.modal,maxHeight:"96vh"}} onClick={e=>e.stopPropagation()}>
         <div style={C.mHead}>
-          <div>
-            <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:15,fontWeight:700}}>📷 {t("Escanear pasaporte","Scan passport")}</div>
-            <div style={{fontSize:11,color:"rgba(74,222,128,0.8)",marginTop:2}}>✓ Google Cloud Vision OCR</div>
-          </div>
+          <div><div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:15,fontWeight:700}}>📷 {t("Escanear pasaporte","Scan passport")}</div></div>
           <button style={C.mClose} onClick={closePassportModal}>×</button>
         </div>
         <div style={{padding:"20px"}}>
@@ -527,60 +602,25 @@ Responde en el idioma del usuario. Conciso y profesional.`;
                 <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",textAlign:"center"}}>{t("Foto JPG/PNG o PDF del pasaporte","Passport JPG/PNG photo or PDF")}</div>
               </button>
               <input ref={fileInputRef} type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={handleFileUpload}/>
-              <div style={{...C.card,padding:"14px 16px",background:"rgba(74,222,128,0.04)",borderColor:"rgba(74,222,128,0.2)"}}>
-                <div style={{fontSize:12,color:"rgba(74,222,128,0.9)",fontWeight:600,marginBottom:8}}>💡 {t("Para mejores resultados","For best results")}</div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",lineHeight:1.7}}>
-                  • {t("Usa la página con la foto y datos","Use the page with photo and data")}<br/>
-                  • {t("Imagen clara, sin reflejos ni sombras","Clear image, no glare or shadows")}<br/>
-                  • {t("Si es PDF, que el texto sea legible","If PDF, text must be readable")}<br/>
-                  • {t("También puedes hacer screenshot del pasaporte","You can also screenshot the passport")}
-                </div>
-              </div>
             </div>
           )}
-          {scanStep==="camera"&&(
-            <div>
-              <div style={{position:"relative",borderRadius:16,overflow:"hidden",background:"#000",marginBottom:16,lineHeight:0}}>
-                <video ref={videoRef} style={{width:"100%",display:"block",maxHeight:"55vh",objectFit:"cover"}} playsInline muted autoPlay/>
-                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
-                  <div style={{width:"94%",height:"68%",position:"relative"}}>
-                    {[[{top:0,left:0},{borderTopWidth:4,borderLeftWidth:4,borderRadius:"6px 0 0 0"}],[{top:0,right:0},{borderTopWidth:4,borderRightWidth:4,borderRadius:"0 6px 0 0"}],[{bottom:0,left:0},{borderBottomWidth:4,borderLeftWidth:4,borderRadius:"0 0 0 6px"}],[{bottom:0,right:0},{borderBottomWidth:4,borderRightWidth:4,borderRadius:"0 0 6px 0"}]].map(([pos,border],i)=>(
-                      <div key={i} style={{position:"absolute",...pos,width:32,height:32,borderColor:"#f59e0b",borderStyle:"solid",borderWidth:0,...border}}/>
-                    ))}
-                    <div style={{position:"absolute",inset:0,boxShadow:"0 0 0 1000px rgba(0,0,0,0.5)",pointerEvents:"none"}}/>
-                  </div>
-                </div>
-                <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(transparent,rgba(0,0,0,0.75))",padding:"20px 16px 10px",textAlign:"center"}}>
-                  <div style={{fontSize:13,color:"rgba(255,255,255,0.9)",fontWeight:500}}>{t("Centra el pasaporte en el marco","Center passport in frame")}</div>
-                </div>
-              </div>
-              <canvas ref={canvasRef} style={{display:"none"}}/>
-              <div style={{display:"flex",gap:12}}>
-                <button style={{...C.btnG,flex:1,padding:"12px",justifyContent:"center",display:"flex"}} onClick={()=>{stopCamera();setScanStep("choose");}}>← {t("Volver","Back")}</button>
-                <button style={{...C.btnScan,flex:2,padding:"14px"}} onClick={capturePhoto}><span style={{fontSize:22}}>📸</span> {t("Capturar","Capture")}</button>
-              </div>
-            </div>
-          )}
-          {scanStep==="preview"&&(
+          {scanStep==="preview"&&passportPreview&&(
             <div>
               <div style={{position:"relative",marginBottom:16,borderRadius:14,overflow:"hidden",border:"2px solid rgba(99,102,241,0.4)",background:"#000",lineHeight:0}}>
                 <img src={passportPreview} alt="Passport" style={{width:"100%",maxHeight:"48vh",objectFit:"contain",display:"block"}}/>
-                <button style={{position:"absolute",top:10,right:10,...C.btnG,padding:"5px 10px",fontSize:12}} onClick={()=>setScanStep("choose")}>✕ {t("Cambiar","Change")}</button>
-              </div>
-              <div style={{...C.card,padding:"12px 14px",background:"rgba(74,222,128,0.05)",borderColor:"rgba(74,222,128,0.2)",marginBottom:14}}>
-                <div style={{fontSize:12,color:"#4ade80",fontWeight:600}}>✓ {t("Lista para Google Vision","Ready for Google Vision")}</div>
+                <button style={{position:"absolute",top:10,right:10,...C.btnG,padding:"5px 10px",fontSize:12}} onClick={()=>setScanStep("choose")}>✕</button>
               </div>
               <div style={{display:"flex",gap:12}}>
-                <button style={{...C.btnG,flex:1,padding:"12px",justifyContent:"center",display:"flex"}} onClick={()=>setScanStep("choose")}>← {t("Reintentar","Retry")}</button>
-                <button style={{...C.btnScan,flex:2,padding:"14px"}} onClick={scanPassport}>🔍 {t("Extraer datos","Extract data")}</button>
+                <button style={{...C.btnG,flex:1,padding:"12px",justifyContent:"center",display:"flex"}} onClick={()=>setScanStep("choose")}>← {t("Cambiar","Change")}</button>
+                <button style={{flex:2,padding:"14px",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",background:"linear-gradient(135deg,#f59e0b,#ef4444)",color:"#fff",border:"none",fontFamily:"inherit"}} onClick={scanPassport}>🔍 {t("Extraer datos","Extract data")}</button>
               </div>
             </div>
           )}
           {scanStep==="scanning"&&(
             <div style={{textAlign:"center",padding:"30px 20px"}}>
               <div style={{fontSize:52,marginBottom:16,animation:"spin 1.5s linear infinite",display:"inline-block"}}>⟳</div>
-              <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontWeight:700,fontSize:18,color:"#c084fc",marginBottom:8}}>{t("Analizando con Google Vision...","Analyzing with Google Vision...")}</div>
-              <div style={{fontSize:13,color:"rgba(255,255,255,0.45)",lineHeight:1.6}}>{t("Puede tardar 5-15 segundos","May take 5-15 seconds")}</div>
+              <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontWeight:700,fontSize:18,color:"#c084fc",marginBottom:8}}>{t("Analizando documento...","Analyzing document...")}</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.45)"}}>{t("Puede tardar 5-15 segundos.","May take 5-15 seconds.")}</div>
             </div>
           )}
         </div>
@@ -592,10 +632,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
     <div style={C.overlay} onClick={e=>{if(e.target===e.currentTarget)setClientModal(null);}}>
       <div style={C.modal} onClick={e=>e.stopPropagation()}>
         <div style={C.mHead}>
-          <div>
-            <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:15,fontWeight:700}}>📁 {clientModal.name}</div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:2}}>{clientModal.client_id}</div>
-          </div>
+          <div><div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:15,fontWeight:700}}>📁 {clientModal.name}</div><div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:2}}>{clientModal.client_id}</div></div>
           <div style={{marginLeft:"auto",display:"flex",gap:6}}>
             <button style={C.btnS} onClick={()=>exportToPDF(clientModal,lang)}>⬇</button>
             <button style={C.btnG} onClick={()=>{setClientModal(null);openGmail(clientModal);}}>✉</button>
@@ -636,10 +673,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
     <div style={C.overlay} onClick={e=>{if(e.target===e.currentTarget)setModal(null);}}>
       <div style={C.modal} onClick={e=>e.stopPropagation()}>
         <div style={C.mHead}>
-          <div>
-            <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:15,fontWeight:700}}>{modal.mode==="add"?t("Nuevo cliente","New client"):t("Editar cliente","Edit client")}</div>
-            {modal.mode==="add"&&form.passport&&<div style={{fontSize:11,color:"#4ade80",marginTop:2}}>✓ Google Vision · {t("Datos extraídos","Data extracted")}</div>}
-          </div>
+          <div><div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:15,fontWeight:700}}>{modal.mode==="add"?t("Nuevo cliente","New client"):t("Editar cliente","Edit client")}</div></div>
           <button style={C.mClose} onClick={()=>setModal(null)}>×</button>
         </div>
         <div style={{padding:"18px 20px"}}>
@@ -648,7 +682,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
             {[{key:"name",label:t("Nombre completo","Full name"),ph:"JUAN PÉREZ"},{key:"client_id",label:"ID",ph:"CUR-001"},{key:"phone",label:t("Teléfono","Phone"),ph:"+5999..."},{key:"email",label:"Email",ph:"cliente@email.com"},{key:"nationality",label:t("Nacionalidad","Nationality"),ph:"Venezolana"},{key:"birthdate",label:t("Nacimiento","Birthday"),type:"date"},{key:"passport",label:t("N° Pasaporte","Passport No."),ph:"A1234567"},{key:"entry_date",label:t("Entrada Curaçao","Entry Curaçao"),type:"date"},{key:"address",label:t("Dirección","Address"),ph:"Willemstad..."},{key:"emergency_contact",label:t("Emergencia","Emergency"),ph:"Nombre · tel"}].map(f=>(
               <div key={f.key}>
                 <label style={C.fLabel}>{f.label}</label>
-                <input style={{...C.input,borderColor:["name","passport","nationality","birthdate"].includes(f.key)&&form[f.key]?"rgba(74,222,128,0.5)":undefined}} type={f.type||"text"} placeholder={f.ph||""} value={form[f.key]||""} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))}/>
+                <input style={C.input} type={f.type||"text"} placeholder={f.ph||""} value={form[f.key]||""} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))}/>
               </div>
             ))}
             <div style={{gridColumn:"1/-1",fontSize:10,color:"rgba(192,132,252,0.6)",textTransform:"uppercase",letterSpacing:"0.1em",paddingTop:8,paddingBottom:6,borderBottom:"1px solid rgba(99,102,241,0.15)"}}>{t("Trámite y pagos","Case & payments")}</div>
@@ -693,40 +727,20 @@ Responde en el idioma del usuario. Conciso y profesional.`;
     </div>
   );
 
-  const NAV_ITEMS=[{key:"dashboard",icon:"⬡",es:"Panel",en:"Dashboard"},{key:"clients",icon:"◈",es:"Clientes",en:"Clients"},{key:"payments",icon:"◇",es:"Pagos",en:"Payments"},{key:"alerts",icon:"◻",es:"Alertas",en:"Alerts",badge:notifs.filter(n=>n.urgent).length}];
+  const NAV=[{key:"dashboard",icon:"⬡",es:"Panel",en:"Dashboard"},{key:"clients",icon:"◈",es:"Clientes",en:"Clients"},{key:"payments",icon:"◇",es:"Pagos",en:"Payments"},{key:"alerts",icon:"◻",es:"Alertas",en:"Alerts",badge:notifs.filter(n=>n.urgent).length}];
 
-  function DashboardContent(){
-    return(<>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
-        {[{label:t("Total clientes","Total clients"),value:clients.length,color:"#c084fc"},{label:t("En proceso","In process"),value:clients.filter(c=>c.status==="proceso").length,color:"#38bdf8"},{label:t("Por cobrar","Outstanding"),value:`ANG ${totalDebt}`,color:"#fb923c"},{label:t("Vencen pronto","Expiring"),value:expiring,color:"#f87171"}].map((s,i)=>(
-          <div key={i} style={{...C.card,borderColor:s.color+"33"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</div><div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:26,fontWeight:800,color:s.color}}>{s.value}</div></div>
-        ))}
+  // ── AUTH STATES ───────────────────────────────────────────────────────────
+  if(authState==="loading") return(
+    <div style={{minHeight:"100vh",background:"#0a0a0f",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',system-ui,sans-serif"}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontWeight:800,fontSize:28,background:"linear-gradient(135deg,#c084fc,#38bdf8)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",marginBottom:16}}>CuraManage</div>
+        <div style={{fontSize:24,animation:"spin 1s linear infinite",display:"inline-block",color:"#c084fc"}}>⟳</div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:20}}>
-        {[{title:t("Por estatus","By status"),data:statusData},{title:t("Por tipo","By type"),data:typeData}].map((ch,ci)=>(
-          <div key={ci} style={C.card}>
-            <div style={{fontSize:11,fontWeight:600,color:"rgba(192,132,252,0.7)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>{ch.title}</div>
-            <ResponsiveContainer width="100%" height={120}><PieChart><Pie data={ch.data} cx="50%" cy="50%" innerRadius={28} outerRadius={50} paddingAngle={3} dataKey="value">{ch.data.map((e,i)=><Cell key={i} fill={e.color} stroke="transparent"/>)}</Pie><Tooltip contentStyle={{background:"#1a1a2e",border:"1px solid rgba(99,102,241,0.3)",borderRadius:8,fontSize:11}}/></PieChart></ResponsiveContainer>
-            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:4}}>{ch.data.map((d,i)=><div key={i} style={{fontSize:10,color:d.color,display:"flex",alignItems:"center",gap:3}}><span style={{width:5,height:5,borderRadius:"50%",background:d.color,display:"inline-block"}}/>{d.name}:{d.value}</div>)}</div>
-          </div>
-        ))}
-        <div style={C.card}>
-          <div style={{fontSize:11,fontWeight:600,color:"rgba(192,132,252,0.7)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>{t("Cobros ANG","Payments ANG")}</div>
-          <ResponsiveContainer width="100%" height={120}><BarChart data={payData} barSize={26}><XAxis dataKey="name" tick={{fontSize:10,fill:"rgba(255,255,255,0.4)"}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:10,fill:"rgba(255,255,255,0.4)"}} axisLine={false} tickLine={false}/><Tooltip contentStyle={{background:"#1a1a2e",border:"1px solid rgba(99,102,241,0.3)",borderRadius:8,fontSize:11}}/><Bar dataKey="value" radius={[5,5,0,0]}>{payData.map((d,i)=><Cell key={i} fill={d.fill}/>)}</Bar></BarChart></ResponsiveContainer>
-        </div>
-      </div>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-        <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:14,fontWeight:700}}>{t("Clientes recientes","Recent clients")}</div>
-        <button style={{...C.btnG,marginLeft:"auto",fontSize:11}} onClick={()=>setSection("clients")}>{t("Ver todos →","View all →")}</button>
-      </div>
-      <div style={{...C.card,padding:0,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"2fr 1.2fr 1.1fr 1fr 70px 80px 100px",borderBottom:"1px solid rgba(99,102,241,0.2)",background:"rgba(99,102,241,0.08)"}}>
-          {[t("Cliente","Client"),t("Tipo","Type"),t("Estatus","Status"),t("Vence","Expires"),t("Pago","Pmt"),t("Deuda","Debt"),""].map((h,i)=><div key={i} style={{padding:"10px 14px",fontSize:10,fontWeight:600,color:"rgba(192,132,252,0.7)",textTransform:"uppercase",letterSpacing:"0.07em"}}>{h}</div>)}
-        </div>
-        {clients.length===0?<div style={{textAlign:"center",padding:"28px",color:"rgba(255,255,255,0.3)"}}>{t("Sin clientes — escanea un pasaporte 📷","No clients — scan a passport 📷")}</div>:clients.slice(0,6).map(c=><DRow key={c.id} c={c}/>)}
-      </div>
-    </>);
-  }
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+  if(authState==="login") return <LoginScreen onLogin={()=>setAuthState("app")}/>;
+  if(authState==="unauthorized") return <UnauthorizedScreen email={currentUser?.email} onSignOut={handleSignOut}/>;
 
   return(
     <div style={C.app}>
@@ -753,7 +767,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
             <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:2,letterSpacing:"0.1em",textTransform:"uppercase"}}>Curaçao · Gestión</div>
           </div>
           <nav style={{flex:1,padding:"12px 8px",display:"flex",flexDirection:"column",gap:3}}>
-            {NAV_ITEMS.map(item=>(
+            {NAV.map(item=>(
               <div key={item.key} style={C.navItem(section===item.key)} onClick={()=>setSection(item.key)}>
                 <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>
                 <span>{t(item.es,item.en)}</span>
@@ -761,27 +775,71 @@ Responde en el idioma del usuario. Conciso y profesional.`;
               </div>
             ))}
           </nav>
+          {/* User info + logout */}
           <div style={{padding:"12px 8px",borderTop:"1px solid rgba(99,102,241,0.2)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,padding:"8px 10px",background:"rgba(99,102,241,0.08)",borderRadius:10,border:"1px solid rgba(99,102,241,0.2)"}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#fff",flexShrink:0}}>
+                {currentUser?.email?.charAt(0).toUpperCase()}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:11,fontWeight:600,color:"#f0f0f5",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentUser?.email}</div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)"}}>Admin</div>
+              </div>
+            </div>
             <div style={{fontSize:10,color:"rgba(255,255,255,0.25)",textAlign:"center",marginBottom:8}}>{clients.length} {t("clientes","clients")} · Supabase ✓</div>
-            <div style={{display:"flex",gap:3,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:3}}>
+            <div style={{display:"flex",gap:3,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:3,marginBottom:8}}>
               <div style={C.langBtn(lang==="es")} onClick={()=>setLang("es")}>ES</div>
               <div style={C.langBtn(lang==="en")} onClick={()=>setLang("en")}>EN</div>
             </div>
+            <button onClick={handleSignOut} style={{width:"100%",padding:"7px",borderRadius:8,fontSize:11,cursor:"pointer",background:"rgba(248,113,113,0.08)",color:"rgba(248,113,113,0.7)",border:"1px solid rgba(248,113,113,0.2)",fontFamily:"inherit"}}>
+              {t("Cerrar sesión","Sign out")}
+            </button>
           </div>
         </aside>
+
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
           <div style={C.topbar}>
             <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontWeight:700,fontSize:15,flex:1}}>{({dashboard:t("Panel","Dashboard"),clients:t("Clientes","Clients"),payments:t("Pagos","Payments"),alerts:t("Alertas","Alerts")})[section]}</div>
             {loading&&<span style={{fontSize:11,color:"rgba(192,132,252,0.5)",animation:"glow 1s infinite"}}>⟳</span>}
             <div style={{display:"flex",gap:8}}>
               <button style={C.btnG} onClick={load}>↻</button>
-              <button style={{...C.btnG,background:"rgba(245,158,11,0.08)",color:"#f59e0b",border:"1px solid rgba(245,158,11,0.3)"}} onClick={openPassportModal}>📷 {t("Escanear pasaporte","Scan passport")}</button>
-              <button style={C.btnG} onClick={openAdd}>+ {t("Manual","Manual")}</button>
-              <button style={C.btnP} onClick={()=>{setShowAI(!showAI);setTimeout(()=>document.getElementById("ai-in")?.focus(),100);}}>✦ {t("Asistente","Assistant")}</button>
+              <button style={{...C.btnG,background:"rgba(245,158,11,0.08)",color:"#f59e0b",border:"1px solid rgba(245,158,11,0.3)"}} onClick={openPassportModal}>📷 {t("Escanear","Scan")}</button>
+              <button style={C.btnG} onClick={openAdd}>+ {t("Nuevo","New")}</button>
+              <button style={C.btnP} onClick={()=>setShowAI(!showAI)}>✦ IA</button>
             </div>
           </div>
+
           <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
-            {section==="dashboard"&&<DashboardContent/>}
+            {section==="dashboard"&&<>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
+                {[{label:t("Total clientes","Total clients"),value:clients.length,color:"#c084fc"},{label:t("En proceso","In process"),value:clients.filter(c=>c.status==="proceso").length,color:"#38bdf8"},{label:t("Por cobrar","Outstanding"),value:`ANG ${totalDebt}`,color:"#fb923c"},{label:t("Vencen pronto","Expiring"),value:expiring,color:"#f87171"}].map((s,i)=>(
+                  <div key={i} style={{...C.card,borderColor:s.color+"33"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</div><div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:26,fontWeight:800,color:s.color}}>{s.value}</div></div>
+                ))}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:20}}>
+                {[{title:t("Por estatus","By status"),data:statusData},{title:t("Por tipo","By type"),data:typeData}].map((ch,ci)=>(
+                  <div key={ci} style={C.card}>
+                    <div style={{fontSize:11,fontWeight:600,color:"rgba(192,132,252,0.7)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>{ch.title}</div>
+                    <ResponsiveContainer width="100%" height={120}><PieChart><Pie data={ch.data} cx="50%" cy="50%" innerRadius={28} outerRadius={50} paddingAngle={3} dataKey="value">{ch.data.map((e,i)=><Cell key={i} fill={e.color} stroke="transparent"/>)}</Pie><Tooltip contentStyle={{background:"#1a1a2e",border:"1px solid rgba(99,102,241,0.3)",borderRadius:8,fontSize:11}}/></PieChart></ResponsiveContainer>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:4}}>{ch.data.map((d,i)=><div key={i} style={{fontSize:10,color:d.color,display:"flex",alignItems:"center",gap:3}}><span style={{width:5,height:5,borderRadius:"50%",background:d.color,display:"inline-block"}}/>{d.name}:{d.value}</div>)}</div>
+                  </div>
+                ))}
+                <div style={C.card}>
+                  <div style={{fontSize:11,fontWeight:600,color:"rgba(192,132,252,0.7)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>{t("Cobros ANG","Payments ANG")}</div>
+                  <ResponsiveContainer width="100%" height={120}><BarChart data={payData} barSize={26}><XAxis dataKey="name" tick={{fontSize:10,fill:"rgba(255,255,255,0.4)"}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:10,fill:"rgba(255,255,255,0.4)"}} axisLine={false} tickLine={false}/><Tooltip contentStyle={{background:"#1a1a2e",border:"1px solid rgba(99,102,241,0.3)",borderRadius:8,fontSize:11}}/><Bar dataKey="value" radius={[5,5,0,0]}>{payData.map((d,i)=><Cell key={i} fill={d.fill}/>)}</Bar></BarChart></ResponsiveContainer>
+                </div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+                <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:14,fontWeight:700}}>{t("Clientes recientes","Recent clients")}</div>
+                <button style={{...C.btnG,marginLeft:"auto",fontSize:11}} onClick={()=>setSection("clients")}>{t("Ver todos →","View all →")}</button>
+              </div>
+              <div style={{...C.card,padding:0,overflow:"hidden"}}>
+                <div style={{display:"grid",gridTemplateColumns:"2fr 1.2fr 1.1fr 1fr 70px 80px 100px",borderBottom:"1px solid rgba(99,102,241,0.2)",background:"rgba(99,102,241,0.08)"}}>
+                  {[t("Cliente","Client"),t("Tipo","Type"),t("Estatus","Status"),t("Vence","Expires"),t("Pago","Pmt"),t("Deuda","Debt"),""].map((h,i)=><div key={i} style={{padding:"10px 14px",fontSize:10,fontWeight:600,color:"rgba(192,132,252,0.7)",textTransform:"uppercase",letterSpacing:"0.07em"}}>{h}</div>)}
+                </div>
+                {clients.length===0?<div style={{textAlign:"center",padding:"28px",color:"rgba(255,255,255,0.3)"}}>{t("Sin clientes aún","No clients yet")}</div>:clients.slice(0,6).map(c=><DRow key={c.id} c={c}/>)}
+              </div>
+            </>}
             {section==="clients"&&<>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
                 <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:14,fontWeight:700}}>{t("Todos los clientes","All clients")} <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400}}>({filtered.length})</span></div>
@@ -800,7 +858,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
               {[...clients].sort((a,b)=>((b.total||0)-(b.paid||0))-((a.total||0)-(a.paid||0))).map(c=><ClientCard key={c.id} c={c}/>)}
             </>}
             {section==="alerts"&&<>
-              {notifs.length===0?<div style={{textAlign:"center",padding:"48px",color:"rgba(255,255,255,0.3)"}}>✅ {t("Sin alertas activas","No active alerts")}</div>:notifs.map((n,i)=>(
+              {notifs.length===0?<div style={{textAlign:"center",padding:"48px",color:"rgba(255,255,255,0.3)"}}>✅ {t("Sin alertas","No alerts")}</div>:notifs.map((n,i)=>(
                 <div key={i} style={{...C.card,borderColor:n.urgent?"rgba(248,113,113,0.3)":"rgba(251,191,36,0.2)",display:"flex",gap:12,marginBottom:10,cursor:"pointer"}} onClick={()=>n.client&&setClientModal(n.client)}>
                   <div style={{fontSize:20}}>{n.icon}</div>
                   <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{n.title}</div><div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginTop:2}}>{n.sub}</div></div>
@@ -863,7 +921,7 @@ Responde en el idioma del usuario. Conciso y profesional.`;
           </>}
         </div>
         <nav style={C.mobileNav}>
-          {NAV_ITEMS.map(item=>(
+          {NAV.map(item=>(
             <button key={item.key} style={C.mNavBtn(section===item.key)} onClick={()=>setSection(item.key)}>
               <span style={{fontSize:20}}>{item.icon}</span>
               <span>{t(item.es,item.en)}</span>
