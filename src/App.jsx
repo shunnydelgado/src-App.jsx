@@ -31,7 +31,7 @@ async function signInWithGoogle() {
 }
 
 async function signInWithGoogleRedirect() {
-  window.location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(window.location.origin)}&apikey=${SUPABASE_KEY}`;
+  window.location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent("https://curamanage.netlify.app")}&apikey=${SUPABASE_KEY}`;
 }
 
 async function getSession() {
