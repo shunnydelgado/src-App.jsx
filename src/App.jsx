@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://tfatwczcufvmthuolfjv.supabase.co";
 const SUPABASE_KEY = "sb_publishable_-S2VtEoXw1lbuSXROU4_jw_Q2JDABWP";
 const ALLOWED_EMAILS = ["maolin503@gmail.com", "ramiro.olbina@gmail.com"];
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function supabaseReq(method, path, body, token) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {
@@ -19,73 +22,6 @@ async function supabaseReq(method, path, body, token) {
   const text = await res.text();
   if (!res.ok) throw new Error(text);
   return text ? JSON.parse(text) : [];
-}
-
-async function signInWithGoogle() {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(window.location.origin)}`, {
-    headers: { "apikey": SUPABASE_KEY }
-  });
-  // Redirect to Google
-  const data = await res.json();
-  if (data.url) window.location.href = data.url;
-}
-
-async function signInWithGoogleRedirect() {
-  window.location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent("https://curamanage.netlify.app")}&apikey=${SUPABASE_KEY}`;
-}
-
-async function getSession() {
-  // Check URL hash for token (after OAuth redirect)
-  const hash = window.location.hash;
-  if (hash && hash.includes("access_token")) {
-    const params = new URLSearchParams(hash.substring(1));
-    const accessToken = params.get("access_token");
-    const refreshToken = params.get("refresh_token");
-    if (accessToken) {
-      localStorage.setItem("cm_access_token", accessToken);
-      localStorage.setItem("cm_refresh_token", refreshToken || "");
-      // Clean URL without reloading
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return accessToken;
-    }
-  }
-  // Check query params too (some OAuth flows use ?access_token=)
-  const search = window.location.search;
-  if (search && search.includes("access_token")) {
-    const params = new URLSearchParams(search.substring(1));
-    const accessToken = params.get("access_token");
-    const refreshToken = params.get("refresh_token");
-    if (accessToken) {
-      localStorage.setItem("cm_access_token", accessToken);
-      localStorage.setItem("cm_refresh_token", refreshToken || "");
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return accessToken;
-    }
-  }
-  return localStorage.getItem("cm_access_token");
-}
-
-async function getUserFromToken(token) {
-  if (!token) return null;
-  try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` }
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
-}
-
-async function signOut() {
-  const token = localStorage.getItem("cm_access_token");
-  if (token) {
-    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
-      method: "POST",
-      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` }
-    }).catch(()=>{});
-  }
-  localStorage.removeItem("cm_access_token");
-  localStorage.removeItem("cm_refresh_token");
 }
 
 const STATUS_CFG = {
@@ -185,7 +121,11 @@ function LoginScreen({onLogin}) {
     setLoading(true);
     setError("");
     try {
-      await signInWithGoogleRedirect();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: "https://curamanage.netlify.app" }
+      });
+      if (error) throw error;
     } catch(e) {
       setError("Error al iniciar sesión. Intenta de nuevo.");
       setLoading(false);
@@ -301,25 +241,27 @@ export default function CuraManage() {
 
   // ── AUTH ──────────────────────────────────────────────────────────────────
   useEffect(()=>{
-    async function checkAuth() {
-      const token = await getSession();
-      if (!token) { setAuthState("login"); return; }
-      const user = await getUserFromToken(token);
-      if (!user) { setAuthState("login"); return; }
-      setCurrentUser(user);
-      setAccessToken(token);
-      // Check if email is authorized
-      if (!ALLOWED_EMAILS.includes(user.email)) {
-        setAuthState("unauthorized");
-        return;
-      }
-      setAuthState("app");
-    }
-    checkAuth();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setCurrentUser(session.user);
+        setAccessToken(session.access_token);
+        if (!ALLOWED_EMAILS.includes(session.user.email)) { setAuthState("unauthorized"); }
+        else { setAuthState("app"); }
+      } else { setAuthState("login"); }
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setCurrentUser(session.user);
+        setAccessToken(session.access_token);
+        if (!ALLOWED_EMAILS.includes(session.user.email)) { setAuthState("unauthorized"); }
+        else { setAuthState("app"); }
+      } else { setAuthState("login"); setCurrentUser(null); setAccessToken(null); }
+    });
+    return () => subscription.unsubscribe();
   },[]);
 
   async function handleSignOut() {
-    await signOut();
+    await supabase.auth.signOut();
     setCurrentUser(null);
     setAccessToken(null);
     setAuthState("login");
