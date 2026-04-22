@@ -405,9 +405,11 @@ export default function CuraManage() {
   }
 
   // AVATAR component
-  function Avatar({url, name, size=44}) {
+  const [photoViewer, setPhotoViewer] = useState(null);
+
+  function Avatar({url, name, size=44, clickable=false}) {
     const initials = (name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
-    if(url) return <img src={url} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(99,102,241,0.4)",flexShrink:0}} alt={name}/>;
+    if(url) return <img src={url} onClick={clickable?()=>setPhotoViewer(url):undefined} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(99,102,241,0.4)",flexShrink:0,cursor:clickable?"zoom-in":"default"}} alt={name}/>;
     return <div style={{width:size,height:size,borderRadius:"50%",background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.35,fontWeight:700,color:"#fff",flexShrink:0,border:"2px solid rgba(99,102,241,0.4)"}}>{initials}</div>;
   }
 
@@ -579,7 +581,7 @@ export default function CuraManage() {
       <div style={C.modal} onClick={e=>e.stopPropagation()}>
         <div style={C.mHead}>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <Avatar url={clientModal.photo_url} name={clientModal.name} size={44}/>
+            <Avatar url={clientModal.photo_url} name={clientModal.name} size={56} clickable={true}/>
             <div>
               <div style={{fontFamily:"'Syne',system-ui,sans-serif",fontSize:15,fontWeight:700}}>{clientModal.name}</div>
               <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:1}}>{clientModal.client_id}</div>
@@ -927,6 +929,14 @@ export default function CuraManage() {
       {PASSPORT_MODAL}
       {CLIENT_FOLDER}
       {FORM_MODAL}
+      {photoViewer&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}} onClick={()=>setPhotoViewer(null)}>
+          <div style={{position:"relative",maxWidth:"90vw",maxHeight:"90vh"}}>
+            <img src={photoViewer} style={{maxWidth:"90vw",maxHeight:"85vh",objectFit:"contain",borderRadius:12,boxShadow:"0 25px 50px rgba(0,0,0,0.5)"}} alt="Foto cliente"/>
+            <button onClick={()=>setPhotoViewer(null)} style={{position:"absolute",top:-16,right:-16,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"inherit"}}>×</button>
+          </div>
+        </div>
+      )}
       {toast&&<div style={C.toast(toast.ok)}>{toast.ok?"✓":"✕"} {toast.msg}</div>}
     </div>
   );
