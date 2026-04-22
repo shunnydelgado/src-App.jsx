@@ -44,6 +44,20 @@ async function getSession() {
     if (accessToken) {
       localStorage.setItem("cm_access_token", accessToken);
       localStorage.setItem("cm_refresh_token", refreshToken || "");
+      // Clean URL without reloading
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return accessToken;
+    }
+  }
+  // Check query params too (some OAuth flows use ?access_token=)
+  const search = window.location.search;
+  if (search && search.includes("access_token")) {
+    const params = new URLSearchParams(search.substring(1));
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    if (accessToken) {
+      localStorage.setItem("cm_access_token", accessToken);
+      localStorage.setItem("cm_refresh_token", refreshToken || "");
       window.history.replaceState({}, document.title, window.location.pathname);
       return accessToken;
     }
