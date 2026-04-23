@@ -344,13 +344,13 @@ export default function CuraManage() {
   function closePassportModal(){setPassportModal(false);setPassportPreview(null);setScanStep("choose");}
 
   // FORM
-  function openAdd(){setForm({client_id:`CUR-${String(clients.length+1).padStart(3,"0")}`,type:"permiso",status:"proceso",total:"",paid:"0",expiry:"",name:"",email:"",phone:"",nationality:"",birthdate:"",passport:"",entry_date:"",emergency_contact:"",address:"",notes:"",documents:[],referido:"",caso_descripcion:"",photo_url:"",fecha_solicitud:"",fecha_copy_cliente:""});setModal({mode:"add"});}
-  function openEdit(c){setForm({...c,total:String(c.total||""),paid:String(c.paid||""),expiry:c.expiry||"",birthdate:c.birthdate||"",entry_date:c.entry_date||"",documents:c.documents||[],referido:c.referido||"",caso_descripcion:c.caso_descripcion||"",photo_url:c.photo_url||"",fecha_solicitud:c.fecha_solicitud||"",fecha_copy_cliente:c.fecha_copy_cliente||""});setModal({mode:"edit",id:c.id});}
+  function openAdd(){setForm({client_id:`CUR-${String(clients.length+1).padStart(3,"0")}`,type:"permiso",status:"proceso",total:"",paid:"0",expiry:"",name:"",email:"",phone:"",nationality:"",birthdate:"",passport:"",entry_date:"",emergency_contact:"",address:"",notes:"",documents:[],referido:"",caso_descripcion:"",photo_url:"",fecha_solicitud:"",fecha_copy_cliente:"",fecha_tentativa_copy:"",fecha_tentativa_aprobacion:""});setModal({mode:"add"});}
+  function openEdit(c){setForm({...c,total:String(c.total||""),paid:String(c.paid||""),expiry:c.expiry||"",birthdate:c.birthdate||"",entry_date:c.entry_date||"",documents:c.documents||[],referido:c.referido||"",caso_descripcion:c.caso_descripcion||"",photo_url:c.photo_url||"",fecha_solicitud:c.fecha_solicitud||"",fecha_copy_cliente:c.fecha_copy_cliente||"",fecha_tentativa_copy:c.fecha_tentativa_copy||"",fecha_tentativa_aprobacion:c.fecha_tentativa_aprobacion||""});setModal({mode:"edit",id:c.id});}
 
   async function saveClient(){
     if(!form.name?.trim()){showToast("Nombre requerido",false);return;}
     setSaving(true);
-    const data={client_id:form.client_id,name:form.name,type:form.type,status:form.status,expiry:form.expiry||null,total:parseFloat(form.total)||0,paid:parseFloat(form.paid)||0,email:form.email,notes:form.notes,phone:form.phone,nationality:form.nationality,birthdate:form.birthdate||null,passport:form.passport,entry_date:form.entry_date||null,emergency_contact:form.emergency_contact,address:form.address,documents:form.documents||[],referido:form.referido||null,caso_descripcion:form.caso_descripcion||null,photo_url:form.photo_url||null,fecha_solicitud:form.fecha_solicitud||null,fecha_copy_cliente:form.fecha_copy_cliente||null};
+    const data={client_id:form.client_id,name:form.name,type:form.type,status:form.status,expiry:form.expiry||null,total:parseFloat(form.total)||0,paid:parseFloat(form.paid)||0,email:form.email,notes:form.notes,phone:form.phone,nationality:form.nationality,birthdate:form.birthdate||null,passport:form.passport,entry_date:form.entry_date||null,emergency_contact:form.emergency_contact,address:form.address,documents:form.documents||[],referido:form.referido||null,caso_descripcion:form.caso_descripcion||null,photo_url:form.photo_url||null,fecha_solicitud:form.fecha_solicitud||null,fecha_copy_cliente:form.fecha_copy_cliente||null,fecha_tentativa_copy:form.fecha_tentativa_copy||null,fecha_tentativa_aprobacion:form.fecha_tentativa_aprobacion||null};
     try{
       if(modal.mode==="add"){await supabaseReq("POST","/clients",data,accessToken);showToast(t("Cliente guardado ✓","Client saved ✓"));}
       else{await supabaseReq("PATCH",`/clients?id=eq.${modal.id}`,data,accessToken);showToast(t("Actualizado ✓","Updated ✓"));}
@@ -480,6 +480,44 @@ export default function CuraManage() {
           {missing>0&&<span style={{fontSize:11,color:"#f87171",padding:"2px 8px",borderRadius:20,border:"1px solid rgba(248,113,113,0.3)"}}>⚠ {missing} docs</span>}
         </div>
         {c.caso_descripcion&&<div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:10,lineHeight:1.5,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{c.caso_descripcion}</div>}
+        {/* PROGRESS TIMELINE */}
+        {(c.fecha_solicitud||c.fecha_tentativa_copy||c.fecha_copy_cliente||c.fecha_tentativa_aprobacion)&&(()=>{
+          const hasCopy = !!c.fecha_copy_cliente;
+          const step = hasCopy ? 2 : 1;
+          const steps = [
+            {
+              icon: hasCopy?"✅":"⏳",
+              label: hasCopy?"Copy cliente":"Tentativa copy",
+              date: hasCopy ? c.fecha_copy_cliente : c.fecha_tentativa_copy,
+              done: hasCopy,
+              active: !hasCopy,
+            },
+            {
+              icon: c.status==="aprobado"?"✅":hasCopy?"⏳":"🔒",
+              label: c.status==="aprobado"?"Aprobado":"Tentativa aprobación",
+              date: c.fecha_tentativa_aprobacion,
+              done: c.status==="aprobado",
+              active: hasCopy && c.status!=="aprobado",
+            },
+          ];
+          return(
+            <div style={{background:"rgba(99,102,241,0.06)",border:"1px solid rgba(99,102,241,0.15)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
+              <div style={{fontSize:10,color:"rgba(192,132,252,0.6)",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Progreso del trámite</div>
+              <div style={{display:"flex",alignItems:"center",gap:0}}>
+                {steps.map((s,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",flex:1}}>
+                    <div style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1}}>
+                      <div style={{width:28,height:28,borderRadius:"50%",background:s.done?"rgba(74,222,128,0.2)":s.active?"rgba(99,102,241,0.3)":"rgba(255,255,255,0.05)",border:`2px solid ${s.done?"#4ade80":s.active?"#6366f1":"rgba(255,255,255,0.15)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,marginBottom:4}}>{s.icon}</div>
+                      <div style={{fontSize:10,fontWeight:600,color:s.done?"#4ade80":s.active?"#c084fc":"rgba(255,255,255,0.3)",textAlign:"center",lineHeight:1.3}}>{s.label}</div>
+                      {s.date&&<div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:2}}>{new Date(s.date).toLocaleDateString("es",{day:"2-digit",month:"short",year:"2-digit"})}</div>}
+                    </div>
+                    {i<steps.length-1&&<div style={{height:2,width:20,background:hasCopy?"#4ade80":"rgba(255,255,255,0.1)",flexShrink:0,marginBottom:20}}/>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{flex:1}}>
             <div style={{height:4,background:"rgba(255,255,255,0.08)",borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:col,borderRadius:2,transition:"width 0.3s"}}/></div>
@@ -613,7 +651,7 @@ export default function CuraManage() {
             <div style={{fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{clientModal.caso_descripcion}</div>
           </div>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-            {[{label:"Teléfono",value:clientModal.phone},{label:"Nacionalidad",value:clientModal.nationality},{label:"Nacimiento",value:clientModal.birthdate},{label:"Pasaporte",value:clientModal.passport},{label:"Entrada Curaçao",value:clientModal.entry_date},{label:"Email",value:clientModal.email},{label:"📅 Fecha solicitud permiso",value:clientModal.fecha_solicitud},{label:"📋 Fecha copy cliente",value:clientModal.fecha_copy_cliente},{label:"Dirección",value:clientModal.address,full:true},{label:"Emergencia",value:clientModal.emergency_contact,full:true}].map((f,i)=>(
+            {[{label:"Teléfono",value:clientModal.phone},{label:"Nacionalidad",value:clientModal.nationality},{label:"Nacimiento",value:clientModal.birthdate},{label:"Pasaporte",value:clientModal.passport},{label:"Entrada Curaçao",value:clientModal.entry_date},{label:"Email",value:clientModal.email},{label:"📅 Fecha solicitud permiso",value:clientModal.fecha_solicitud},{label:"🎯 Tentativa copy cliente",value:clientModal.fecha_tentativa_copy},{label:"✅ Copy cliente real",value:clientModal.fecha_copy_cliente},{label:"🎯 Tentativa aprobación",value:clientModal.fecha_tentativa_aprobacion},{label:"Dirección",value:clientModal.address,full:true},{label:"Emergencia",value:clientModal.emergency_contact,full:true}].map((f,i)=>(
               <div key={i} style={{gridColumn:f.full?"1/-1":"auto",background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 12px",border:"1px solid rgba(99,102,241,0.15)"}}>
                 <div style={{fontSize:10,color:"rgba(192,132,252,0.5)",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:2}}>{f.label}</div>
                 <div style={{fontSize:13}}>{f.value||<span style={{color:"rgba(255,255,255,0.2)"}}>—</span>}</div>
@@ -692,7 +730,7 @@ export default function CuraManage() {
               <label style={C.fLabel}>Estatus</label>
               <select style={{...C.input,cursor:"pointer"}} value={form.status||"proceso"} onChange={e=>setForm(p=>({...p,status:e.target.value}))}><option value="proceso">En proceso</option><option value="pendiente">Pendiente</option><option value="aprobado">Aprobado</option><option value="rechazado">Rechazado</option></select>
             </div>
-            {[{key:"expiry",label:"Vencimiento permiso",type:"date"},{key:"fecha_solicitud",label:"📅 Fecha solicitud permiso",type:"date"},{key:"fecha_copy_cliente",label:"📋 Fecha copy cliente",type:"date"},{key:"total",label:"Total ANG",type:"number",ph:"0"},{key:"paid",label:"Pagado ANG",type:"number",ph:"0"}].map(f=>(
+            {[{key:"expiry",label:"Vencimiento permiso",type:"date"},{key:"fecha_solicitud",label:"📅 Fecha solicitud permiso",type:"date"},{key:"fecha_tentativa_copy",label:"🎯 Fecha tentativa copy cliente",type:"date"},{key:"fecha_copy_cliente",label:"✅ Fecha real copy cliente",type:"date"},{key:"fecha_tentativa_aprobacion",label:"🎯 Fecha tentativa aprobación",type:"date"},{key:"total",label:"Total ANG",type:"number",ph:"0"},{key:"paid",label:"Pagado ANG",type:"number",ph:"0"}].map(f=>(
               <div key={f.key}>
                 <label style={C.fLabel}>{f.label}</label>
                 <input style={C.input} type={f.type||"text"} placeholder={f.ph||""} value={form[f.key]||""} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))}/>
