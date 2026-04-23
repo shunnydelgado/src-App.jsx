@@ -344,6 +344,20 @@ export default function CuraManage() {
   function closePassportModal(){setPassportModal(false);setPassportPreview(null);setScanStep("choose");}
 
   // FORM
+  // Auto-calculate tentative dates
+  function addWeeks(dateStr, weeks) {
+    if(!dateStr) return "";
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + weeks * 7);
+    return d.toISOString().split("T")[0];
+  }
+  function addMonths(dateStr, months) {
+    if(!dateStr) return "";
+    const d = new Date(dateStr);
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString().split("T")[0];
+  }
+
   function openAdd(){setForm({client_id:`CUR-${String(clients.length+1).padStart(3,"0")}`,type:"permiso",status:"proceso",total:"",paid:"0",expiry:"",name:"",email:"",phone:"",nationality:"",birthdate:"",passport:"",entry_date:"",emergency_contact:"",address:"",notes:"",documents:[],referido:"",caso_descripcion:"",photo_url:"",fecha_solicitud:"",fecha_copy_cliente:"",fecha_tentativa_copy:"",fecha_tentativa_aprobacion:""});setModal({mode:"add"});}
   function openEdit(c){setForm({...c,total:String(c.total||""),paid:String(c.paid||""),expiry:c.expiry||"",birthdate:c.birthdate||"",entry_date:c.entry_date||"",documents:c.documents||[],referido:c.referido||"",caso_descripcion:c.caso_descripcion||"",photo_url:c.photo_url||"",fecha_solicitud:c.fecha_solicitud||"",fecha_copy_cliente:c.fecha_copy_cliente||"",fecha_tentativa_copy:c.fecha_tentativa_copy||"",fecha_tentativa_aprobacion:c.fecha_tentativa_aprobacion||""});setModal({mode:"edit",id:c.id});}
 
@@ -481,37 +495,39 @@ export default function CuraManage() {
         </div>
         {c.caso_descripcion&&<div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:10,lineHeight:1.5,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{c.caso_descripcion}</div>}
         {/* PROGRESS TIMELINE */}
-        {(c.fecha_solicitud||c.fecha_tentativa_copy||c.fecha_copy_cliente||c.fecha_tentativa_aprobacion)&&(()=>{
-          const hasCopy = !!c.fecha_copy_cliente;
-          const step = hasCopy ? 2 : 1;
-          const steps = [
-            {
-              icon: hasCopy?"✅":"⏳",
-              label: hasCopy?"Copy cliente":"Tentativa copy",
-              date: hasCopy ? c.fecha_copy_cliente : c.fecha_tentativa_copy,
-              done: hasCopy,
-              active: !hasCopy,
-            },
-            {
-              icon: c.status==="aprobado"?"✅":hasCopy?"⏳":"🔒",
-              label: c.status==="aprobado"?"Aprobado":"Tentativa aprobación",
-              date: c.fecha_tentativa_aprobacion,
-              done: c.status==="aprobado",
-              active: hasCopy && c.status!=="aprobado",
-            },
+        {(c.fecha_tentativa_copy||c.fecha_copy_cliente||c.fecha_tentativa_aprobacion)&&(()=>{
+          const hasCopy=!!c.fecha_copy_cliente;
+          const isApproved=c.status==="aprobado";
+          const today=new Date();
+          const tentativaCopy=c.fecha_tentativa_copy?new Date(c.fecha_tentativa_copy):null;
+          const tentativaApro=c.fecha_tentativa_aprobacion?new Date(c.fecha_tentativa_aprobacion):null;
+          const copyVencida=tentativaCopy&&!hasCopy&&today>tentativaCopy;
+          const aproVencida=tentativaApro&&!isApproved&&hasCopy&&today>tentativaApro;
+          const steps=[
+            {icon:hasCopy?"✅":copyVencida?"⚠️":"🎯",label:"Copy cliente",sublabel:hasCopy?"Completado":copyVencida?"Vencida":"Tentativa",date:hasCopy?c.fecha_copy_cliente:c.fecha_tentativa_copy,done:hasCopy,alert:copyVencida,active:!hasCopy},
+            {icon:isApproved?"✅":aproVencida?"⚠️":hasCopy?"🎯":"🔒",label:"Aprobación",sublabel:isApproved?"Completado":aproVencida?"Vencida":hasCopy?"Tentativa":"Pendiente",date:c.fecha_tentativa_aprobacion,done:isApproved,alert:aproVencida,active:hasCopy&&!isApproved},
           ];
           return(
-            <div style={{background:"rgba(99,102,241,0.06)",border:"1px solid rgba(99,102,241,0.15)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
-              <div style={{fontSize:10,color:"rgba(192,132,252,0.6)",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Progreso del trámite</div>
-              <div style={{display:"flex",alignItems:"center",gap:0}}>
+            <div style={{background:"rgba(99,102,241,0.06)",border:"1px solid rgba(99,102,241,0.15)",borderRadius:10,padding:"10px 14px",marginBottom:10}}>
+              <div style={{fontSize:10,color:"rgba(192,132,252,0.6)",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Progreso del trámite</div>
+              <div style={{display:"flex",alignItems:"flex-start"}}>
                 {steps.map((s,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",flex:1}}>
+                  <div key={i} style={{display:"flex",alignItems:"flex-start",flex:1}}>
                     <div style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1}}>
-                      <div style={{width:28,height:28,borderRadius:"50%",background:s.done?"rgba(74,222,128,0.2)":s.active?"rgba(99,102,241,0.3)":"rgba(255,255,255,0.05)",border:`2px solid ${s.done?"#4ade80":s.active?"#6366f1":"rgba(255,255,255,0.15)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,marginBottom:4}}>{s.icon}</div>
-                      <div style={{fontSize:10,fontWeight:600,color:s.done?"#4ade80":s.active?"#c084fc":"rgba(255,255,255,0.3)",textAlign:"center",lineHeight:1.3}}>{s.label}</div>
-                      {s.date&&<div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:2}}>{new Date(s.date).toLocaleDateString("es",{day:"2-digit",month:"short",year:"2-digit"})}</div>}
+                      <div style={{width:32,height:32,borderRadius:"50%",
+                        background:s.done?"rgba(74,222,128,0.2)":s.alert?"rgba(248,113,113,0.2)":s.active?"rgba(99,102,241,0.2)":"rgba(255,255,255,0.04)",
+                        border:`2px solid ${s.done?"#4ade80":s.alert?"#f87171":s.active?"#6366f1":"rgba(255,255,255,0.1)"}`,
+                        display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,marginBottom:5}}>{s.icon}</div>
+                      <div style={{fontSize:11,fontWeight:700,color:s.done?"#4ade80":s.alert?"#f87171":s.active?"#c084fc":"rgba(255,255,255,0.25)",textAlign:"center"}}>{s.label}</div>
+                      <div style={{fontSize:10,color:s.done?"rgba(74,222,128,0.6)":s.alert?"rgba(248,113,113,0.6)":s.active?"rgba(192,132,252,0.5)":"rgba(255,255,255,0.2)",textAlign:"center",marginTop:1}}>{s.sublabel}</div>
+                      <div style={{fontSize:10,fontWeight:600,marginTop:4,textAlign:"center",
+                        color:s.done?"#4ade80":s.alert?"#f87171":s.active?"#c084fc":"rgba(255,255,255,0.2)",
+                        background:s.done?"rgba(74,222,128,0.1)":s.alert?"rgba(248,113,113,0.1)":s.active?"rgba(99,102,241,0.1)":"transparent",
+                        padding:"2px 7px",borderRadius:6}}>
+                        {s.date?new Date(s.date).toLocaleDateString("es",{day:"2-digit",month:"short",year:"2-digit"}):"Sin fecha"}
+                      </div>
                     </div>
-                    {i<steps.length-1&&<div style={{height:2,width:20,background:hasCopy?"#4ade80":"rgba(255,255,255,0.1)",flexShrink:0,marginBottom:20}}/>}
+                    {i<steps.length-1&&<div style={{height:2,flex:"0 0 20px",background:hasCopy?"#4ade80":"rgba(255,255,255,0.08)",marginTop:16}}/>}
                   </div>
                 ))}
               </div>
@@ -730,10 +746,44 @@ export default function CuraManage() {
               <label style={C.fLabel}>Estatus</label>
               <select style={{...C.input,cursor:"pointer"}} value={form.status||"proceso"} onChange={e=>setForm(p=>({...p,status:e.target.value}))}><option value="proceso">En proceso</option><option value="pendiente">Pendiente</option><option value="aprobado">Aprobado</option><option value="rechazado">Rechazado</option></select>
             </div>
-            {[{key:"expiry",label:"Vencimiento permiso",type:"date"},{key:"fecha_solicitud",label:"📅 Fecha solicitud permiso",type:"date"},{key:"fecha_tentativa_copy",label:"🎯 Fecha tentativa copy cliente",type:"date"},{key:"fecha_copy_cliente",label:"✅ Fecha real copy cliente",type:"date"},{key:"fecha_tentativa_aprobacion",label:"🎯 Fecha tentativa aprobación",type:"date"},{key:"total",label:"Total ANG",type:"number",ph:"0"},{key:"paid",label:"Pagado ANG",type:"number",ph:"0"}].map(f=>(
+            {/* Expiry */}
+            <div>
+              <label style={C.fLabel}>Vencimiento permiso</label>
+              <input style={C.input} type="date" value={form.expiry||""} onChange={e=>setForm(p=>({...p,expiry:e.target.value}))}/>
+            </div>
+            {/* Fecha solicitud → auto calc tentativa copy */}
+            <div>
+              <label style={C.fLabel}>📅 Fecha solicitud permiso</label>
+              <input style={C.input} type="date" value={form.fecha_solicitud||""} onChange={e=>{
+                const val=e.target.value;
+                const tentativa=addWeeks(val,8);
+                setForm(p=>({...p,fecha_solicitud:val,fecha_tentativa_copy:tentativa}));
+              }}/>
+            </div>
+            {/* Tentativa copy — auto filled, editable */}
+            <div>
+              <label style={C.fLabel}>🎯 Tentativa copy cliente <span style={{color:"rgba(99,102,241,0.6)",fontSize:9}}>AUTO +8 sem</span></label>
+              <input style={{...C.input,borderColor:form.fecha_tentativa_copy?"rgba(99,102,241,0.5)":undefined}} type="date" value={form.fecha_tentativa_copy||""} onChange={e=>setForm(p=>({...p,fecha_tentativa_copy:e.target.value}))}/>
+            </div>
+            {/* Fecha real copy → auto calc tentativa aprobacion */}
+            <div>
+              <label style={C.fLabel}>✅ Fecha real copy cliente</label>
+              <input style={C.input} type="date" value={form.fecha_copy_cliente||""} onChange={e=>{
+                const val=e.target.value;
+                const tentativa=addMonths(val,4);
+                setForm(p=>({...p,fecha_copy_cliente:val,fecha_tentativa_aprobacion:tentativa}));
+              }}/>
+            </div>
+            {/* Tentativa aprobacion — auto filled, editable */}
+            <div>
+              <label style={C.fLabel}>🎯 Tentativa aprobación <span style={{color:"rgba(99,102,241,0.6)",fontSize:9}}>AUTO +4 meses</span></label>
+              <input style={{...C.input,borderColor:form.fecha_tentativa_aprobacion?"rgba(99,102,241,0.5)":undefined}} type="date" value={form.fecha_tentativa_aprobacion||""} onChange={e=>setForm(p=>({...p,fecha_tentativa_aprobacion:e.target.value}))}/>
+            </div>
+            {/* Total y Pagado */}
+            {[{key:"total",label:"Total ANG",type:"number",ph:"0"},{key:"paid",label:"Pagado ANG",type:"number",ph:"0"}].map(f=>(
               <div key={f.key}>
                 <label style={C.fLabel}>{f.label}</label>
-                <input style={C.input} type={f.type||"text"} placeholder={f.ph||""} value={form[f.key]||""} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))}/>
+                <input style={C.input} type={f.type} placeholder={f.ph||""} value={form[f.key]||""} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))}/>
               </div>
             ))}
             <div style={{gridColumn:"1/-1"}}>
