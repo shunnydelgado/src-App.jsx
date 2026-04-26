@@ -569,7 +569,7 @@ export default function CuraManage() {
         </td>
         <td style={{padding:"12px 16px",borderBottom:"1px solid #f1f5f9",fontWeight:600,fontSize:13,color:debt<=0?"#10b981":"#ef4444"}}>{debt<=0?"✓":`ANG ${debt}`}</td>
         <td style={{padding:"12px 16px",borderBottom:"1px solid #f1f5f9"}} onClick={e=>e.stopPropagation()}>
-          <div style={{display:"flex",gap:4"}}>
+          <div style={{display:"flex",gap:4}}>
             <button onClick={()=>openEdit(c)} style={{...S.btnG,padding:"4px 8px",fontSize:11}}>✎</button>
             <button onClick={()=>askAbout(c)} style={{...S.btnG,padding:"4px 8px",fontSize:11,color:"#6366f1"}}>✦</button>
             <button onClick={()=>exportToPDF(c)} style={{...S.btnG,padding:"4px 8px",fontSize:11}}>⬇</button>
