@@ -221,6 +221,10 @@ export default function CuraManage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
   const [passportModal, setPassportModal] = useState(false);
+  const [migrationModal, setMigrationModal] = useState(null);
+  const [migrationResult, setMigrationResult] = useState(null);
+  const [migrationLoading, setMigrationLoading] = useState(false);
+  const [migrationPrograma, setMigrationPrograma] = useState("permiso_trabajo");
   const [passportPreview, setPassportPreview] = useState(null);
   const [scanStep, setScanStep] = useState("choose");
   const aiRef = useRef(null);
@@ -303,7 +307,7 @@ export default function CuraManage() {
         const ab=await file.arrayBuffer(); const bytes=new Uint8Array(ab);
         let bin=""; for(let i=0;i<bytes.byteLength;i+=8192) bin+=String.fromCharCode(...bytes.subarray(i,i+8192));
         const b64=btoa(bin);
-        const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"passport_scan",image:b64,isPDF:true})});
+        const res=await fetch("/.netlify/functions/openai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"passport_scan",image:b64,isPDF:true})});
         const data=await res.json(); const raw=data.content?.[0]?.text||"{}";
         let parsed={}; try{const m=raw.replace(/```json|```/g,"").trim().match(/\{[\s\S]*\}/);if(m)parsed=JSON.parse(m[0]);}catch{}
         if(!parsed.name&&!parsed.passport) throw new Error("No se pudieron extraer datos.");
@@ -321,13 +325,43 @@ export default function CuraManage() {
     if(!passportPreview) return; setScanStep("scanning");
     try{
       const compressed=await compressImage(passportPreview,800,0.65);
-      const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"passport_scan",image:compressed})});
+      const res=await fetch("/.netlify/functions/openai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"passport_scan",image:compressed})});
       const data=await res.json(); const raw=data.content?.[0]?.text||"{}";
       let parsed={}; try{const m=raw.replace(/```json|```/g,"").trim().match(/\{[\s\S]*\}/);if(m)parsed=JSON.parse(m[0]);}catch{}
       if(!parsed.name&&!parsed.passport) throw new Error("No se pudieron extraer datos.");
       setForm({...emptyForm(),client_id:`CUR-${String(clients.length+1).padStart(3,"0")}`,name:parsed.name||"",nationality:parsed.nationality||"",birthdate:parsed.birthdate||"",passport:parsed.passport||"",notes:`Escaneado ${new Date().toLocaleDateString("es")}`,documents:["Pasaporte vigente"]});
       closePassportModal(); setModal({mode:"add"}); showToast("✓ Datos extraídos");
     }catch(e){showToast(e.message,false);setScanStep("preview");}
+  }
+
+  const PROGRAMAS = {
+    "riba_e_luga": "Riba e Luga",
+    "permiso_trabajo": "Permiso de Trabajo",
+    "permiso_residencia": "Permiso de Residencia",
+    "reunificacion_familiar": "Reunificación Familiar",
+  };
+
+  async function checkMigration(client, programa) {
+    setMigrationModal(client);
+    setMigrationResult(null);
+    setMigrationLoading(true);
+    setMigrationPrograma(programa);
+    try {
+      const res = await fetch("/.netlify/functions/openai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "migration_check", client, programa }),
+      });
+      const data = await res.json();
+      const raw = data.content?.[0]?.text || "{}";
+      const cleaned = raw.replace(/```json|```/g, "").trim();
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      const parsed = match ? JSON.parse(match[0]) : {};
+      setMigrationResult(parsed);
+    } catch(e) {
+      showToast("Error: " + e.message, false);
+    }
+    setMigrationLoading(false);
   }
 
   function openPassportModal(){setPassportModal(true);setPassportPreview(null);setScanStep("choose");}
@@ -530,6 +564,7 @@ export default function CuraManage() {
           <div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
             <button onClick={()=>openEdit(c)} style={{...S.btnG,padding:"6px 10px",fontSize:12,minWidth:34,display:"flex",alignItems:"center",justifyContent:"center"}}>✎</button>
             <button onClick={()=>askAbout(c)} style={{...S.btnG,padding:"6px 10px",fontSize:12,minWidth:34,display:"flex",alignItems:"center",justifyContent:"center",color:"#6366f1",borderColor:"#c7d2fe"}}>✦</button>
+            <button onClick={()=>checkMigration(c,"permiso_trabajo")} style={{...S.btnG,padding:"6px 10px",fontSize:12,minWidth:34,display:"flex",alignItems:"center",justifyContent:"center",color:"#10b981",borderColor:"#a7f3d0"}} title="Revisar documentos migratorios">🛂</button>
           </div>
         </div>
       </div>
@@ -1106,6 +1141,103 @@ export default function CuraManage() {
           <div style={{position:"relative"}}>
             <img src={photoViewer} style={{maxWidth:"90vw",maxHeight:"85vh",objectFit:"contain",borderRadius:12,boxShadow:"0 25px 50px rgba(0,0,0,0.5)"}} alt="Foto cliente"/>
             <button onClick={()=>setPhotoViewer(null)} style={{position:"absolute",top:-14,right:-14,width:32,height:32,borderRadius:"50%",background:"#fff",border:"none",color:"#1e293b",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* MIGRATION AGENT MODAL */}
+      {migrationModal&&(
+        <div style={S.overlay} onClick={e=>{if(e.target===e.currentTarget){setMigrationModal(null);setMigrationResult(null);}}}>
+          <div style={S.modal} onClick={e=>e.stopPropagation()}>
+            <div style={S.mHead}>
+              <div>
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:700}}>🛂 Agente Migratorio</div>
+                <div style={{fontSize:12,color:"#94a3b8",marginTop:1}}>{migrationModal.name}</div>
+              </div>
+              <button style={S.mClose} onClick={()=>{setMigrationModal(null);setMigrationResult(null);}}>✕</button>
+            </div>
+            <div style={{padding:"16px 20px"}}>
+              {/* Programa selector */}
+              <div style={{marginBottom:16}}>
+                <label style={S.fLabel}>Programa migratorio</label>
+                <select style={{...S.input,cursor:"pointer"}} value={migrationPrograma} onChange={e=>{setMigrationPrograma(e.target.value);setMigrationResult(null);}}>
+                  <option value="permiso_trabajo">Permiso de Trabajo</option>
+                  <option value="riba_e_luga">Riba e Luga</option>
+                  <option value="permiso_residencia">Permiso de Residencia</option>
+                  <option value="reunificacion_familiar">Reunificación Familiar</option>
+                </select>
+              </div>
+              <button style={{...S.btnP,width:"100%",padding:"12px",marginBottom:16,fontSize:14}} onClick={()=>checkMigration(migrationModal,migrationPrograma)} disabled={migrationLoading}>
+                {migrationLoading?"🔍 Analizando expediente...":"🔍 Revisar documentos"}
+              </button>
+
+              {migrationLoading&&(
+                <div style={{textAlign:"center",padding:"32px"}}>
+                  <div style={{fontSize:40,animation:"spin 1.5s linear infinite",display:"inline-block",color:"#6366f1"}}>⟳</div>
+                  <div style={{fontSize:14,color:"#64748b",marginTop:12}}>Analizando expediente con IA...</div>
+                </div>
+              )}
+
+              {migrationResult&&!migrationLoading&&(
+                <div style={{animation:"fadeIn 0.3s ease"}}>
+                  {/* Progress bar */}
+                  <div style={{...S.cardSm,marginBottom:12,borderTop:`3px solid ${migrationResult.listo_para_presentar?"#10b981":"#f59e0b"}`}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>Expediente completado</div>
+                      <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:800,color:migrationResult.listo_para_presentar?"#10b981":"#f59e0b"}}>{migrationResult.porcentaje_completado}%</div>
+                    </div>
+                    <div style={{height:8,background:"#f1f5f9",borderRadius:4,overflow:"hidden"}}>
+                      <div style={{width:`${migrationResult.porcentaje_completado}%`,height:"100%",background:migrationResult.listo_para_presentar?"#10b981":"#f59e0b",borderRadius:4,transition:"width 0.5s"}}/>
+                    </div>
+                    <div style={{fontSize:12,color:"#64748b",marginTop:6}}>{migrationResult.listo_para_presentar?"✅ Listo para presentar":"⏳ Expediente incompleto"}</div>
+                  </div>
+
+                  {/* Summary */}
+                  {migrationResult.resumen&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                    <div style={{fontSize:11,color:"#0ea5e9",textTransform:"uppercase",fontWeight:700,marginBottom:4}}>Análisis</div>
+                    <div style={{fontSize:13,color:"#0c4a6e",lineHeight:1.6}}>{migrationResult.resumen}</div>
+                  </div>}
+
+                  {/* Missing docs */}
+                  {migrationResult.documentos_faltantes?.length>0&&<div style={{marginBottom:12}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#ef4444",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>❌ Documentos faltantes</div>
+                    {migrationResult.documentos_faltantes.map((doc,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,marginBottom:6}}>
+                        <span style={{color:"#ef4444"}}>✗</span>
+                        <span style={{fontSize:13,color:"#1e293b"}}>{doc}</span>
+                      </div>
+                    ))}
+                  </div>}
+
+                  {/* Complete docs */}
+                  {migrationResult.documentos_completos?.length>0&&<div style={{marginBottom:12}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#10b981",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>✅ Documentos completos</div>
+                    {migrationResult.documentos_completos.map((doc,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:8,marginBottom:6}}>
+                        <span style={{color:"#10b981"}}>✓</span>
+                        <span style={{fontSize:13,color:"#1e293b"}}>{doc}</span>
+                      </div>
+                    ))}
+                  </div>}
+
+                  {/* Urgent actions */}
+                  {migrationResult.acciones_urgentes?.length>0&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                    <div style={{fontSize:11,color:"#f59e0b",textTransform:"uppercase",fontWeight:700,marginBottom:8}}>⚡ Acciones urgentes</div>
+                    {migrationResult.acciones_urgentes.map((accion,i)=>(
+                      <div key={i} style={{fontSize:13,color:"#92400e",marginBottom:4}}>• {accion}</div>
+                    ))}
+                  </div>}
+
+                  {/* Recommendations */}
+                  {migrationResult.recomendaciones?.length>0&&<div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:11,color:"#64748b",textTransform:"uppercase",fontWeight:700,marginBottom:8}}>💡 Recomendaciones</div>
+                    {migrationResult.recomendaciones.map((rec,i)=>(
+                      <div key={i} style={{fontSize:13,color:"#475569",marginBottom:4}}>• {rec}</div>
+                    ))}
+                  </div>}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
