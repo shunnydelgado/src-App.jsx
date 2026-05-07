@@ -1428,52 +1428,58 @@ export default function CuraManage() {
 
       {/* FOLDER IMPORT MODAL */}
       {folderModal&&(
-        <div style={S.overlay} onClick={e=>{if(e.target===e.currentTarget){setFolderModal(false);setFolderFiles([]);}}}>
-          <div style={{...S.modal,maxHeight:"80vh"}} onClick={e=>e.stopPropagation()}>
-            <div style={S.mHead}>
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",backdropFilter:"blur(4px)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}} onClick={e=>{if(e.target===e.currentTarget){setFolderModal(false);setFolderFiles([]);}}}>
+          <div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+            {/* Header */}
+            <div style={{padding:"18px 20px 14px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center"}}>
               <div>
-                <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:700}}>📂 Importar archivos</div>
-                <div style={{fontSize:12,color:"#94a3b8",marginTop:1}}>{folderFiles.length} archivos seleccionados</div>
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:700,color:"#1e293b"}}>📂 Importar archivos</div>
+                <div style={{fontSize:12,color:"#94a3b8",marginTop:1}}>{folderFiles.length} archivo(s) seleccionado(s)</div>
               </div>
               <button style={S.mClose} onClick={()=>{setFolderModal(false);setFolderFiles([]);setFolderClientId("");}}>✕</button>
             </div>
-            <div style={{padding:"18px 20px"}}>
+
+            <div style={{padding:"16px 20px",flex:1,overflowY:"auto"}}>
               {/* Client selector */}
-              <div style={{marginBottom:16}}>
-                <label style={S.fLabel}>¿A qué cliente pertenecen estos archivos?</label>
-                <select style={{...S.input,cursor:"pointer"}} value={folderClientId} onChange={e=>setFolderClientId(e.target.value)}>
+              <div style={{marginBottom:12}}>
+                <label style={S.fLabel}>¿A qué cliente pertenecen?</label>
+                <select style={{...S.input,cursor:"pointer",marginBottom:8}} value={folderClientId} onChange={e=>setFolderClientId(e.target.value)}>
                   <option value="">Selecciona un cliente...</option>
                   {[...clients].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>(
-                    <option key={c.id} value={c.id}>{c.name} — {c.client_id}</option>
+                    <option key={c.id} value={c.id}>{c.name} · {c.client_id}</option>
                   ))}
                 </select>
+                {/* Create new client option */}
+                <button style={{width:"100%",padding:"9px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",background:"#f0f0ff",color:"#6366f1",border:"1px dashed #c7d2fe",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6}} onClick={()=>{setFolderModal(false);openAdd();showToast("Guarda el cliente y luego importa los archivos desde su expediente");}}> 
+                  + Crear nuevo cliente
+                </button>
               </div>
 
               {/* Files preview */}
-              <div style={{marginBottom:16}}>
-                <div style={{fontSize:11,color:"#94a3b8",textTransform:"uppercase",fontWeight:600,marginBottom:8}}>Archivos a importar</div>
-                <div style={{maxHeight:240,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
-                  {folderFiles.slice(0,50).map((f,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#f8fafc",borderRadius:8,border:"1px solid #e2e8f0"}}>
-                      <span style={{fontSize:18}}>{f.type.includes("pdf")?"📕":f.type.includes("image")?"🖼️":"📄"}</span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:500,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
-                        <div style={{fontSize:11,color:"#94a3b8"}}>{Math.round(f.size/1024)} KB</div>
-                      </div>
+              <div style={{fontSize:11,color:"#94a3b8",textTransform:"uppercase",fontWeight:600,marginBottom:8}}>Archivos ({folderFiles.length})</div>
+              <div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:5,marginBottom:12}}>
+                {folderFiles.slice(0,30).map((f,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:"#f8fafc",borderRadius:8,border:"1px solid #e2e8f0"}}>
+                    <span style={{fontSize:16,flexShrink:0}}>{f.type.includes("pdf")?"📕":f.type.includes("image")?"🖼️":"📄"}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:500,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                      <div style={{fontSize:10,color:"#94a3b8"}}>{Math.round(f.size/1024)} KB</div>
                     </div>
-                  ))}
-                  {folderFiles.length>50&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px"}}>...y {folderFiles.length-50} archivos más</div>}
-                </div>
+                  </div>
+                ))}
+                {folderFiles.length>30&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"6px",background:"#f8fafc",borderRadius:8}}>...y {folderFiles.length-30} archivos más</div>}
               </div>
 
-              {importingFolder&&<div style={{textAlign:"center",padding:"16px",background:"#f0f0ff",borderRadius:10,marginBottom:12}}>
-                <div style={{fontSize:24,animation:"spin 1s linear infinite",display:"inline-block",color:"#6366f1"}}>⟳</div>
-                <div style={{fontSize:13,color:"#6366f1",marginTop:8}}>Importando archivos...</div>
+              {importingFolder&&<div style={{textAlign:"center",padding:"14px",background:"#f0f0ff",borderRadius:10}}>
+                <div style={{fontSize:22,animation:"spin 1s linear infinite",display:"inline-block",color:"#6366f1"}}>⟳</div>
+                <div style={{fontSize:13,color:"#6366f1",marginTop:6}}>Importando archivos...</div>
               </div>}
             </div>
-            <div style={S.mFoot}>
-              <button style={S.btnG} onClick={()=>{setFolderModal(false);setFolderFiles([]);setFolderClientId("");}}>Cancelar</button>
-              <button style={{...S.btnP,opacity:!folderClientId||importingFolder?0.5:1}} onClick={importFolderToClient} disabled={!folderClientId||importingFolder}>
+
+            {/* Footer */}
+            <div style={{padding:"12px 20px 16px",borderTop:"1px solid #f1f5f9",display:"flex",gap:8}}>
+              <button style={{...S.btnG,flex:1}} onClick={()=>{setFolderModal(false);setFolderFiles([]);setFolderClientId("");}}>Cancelar</button>
+              <button style={{...S.btnP,flex:2,opacity:!folderClientId||importingFolder?0.5:1}} onClick={importFolderToClient} disabled={!folderClientId||importingFolder}>
                 {importingFolder?"Importando...":"📂 Importar al expediente"}
               </button>
             </div>
