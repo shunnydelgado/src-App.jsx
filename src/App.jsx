@@ -224,6 +224,7 @@ export default function CuraManage() {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [filterModalidad, setFilterModalidad] = useState("");
   const [modal, setModal] = useState(null);
   const [clientModal, setClientModal] = useState(null);
   const [form, setForm] = useState({});
@@ -308,7 +309,9 @@ export default function CuraManage() {
   const filtered=clients.filter(c=>{
     const q=search.toLowerCase();
     return(!q||c.name.toLowerCase().includes(q)||(c.client_id||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q))
-      &&(!filterType||c.type===filterType)&&(!filterStatus||c.status===filterStatus);
+      &&(!filterType||c.type===filterType)
+      &&(!filterStatus||c.status===filterStatus)
+      &&(!filterModalidad||c.modalidad===filterModalidad);
   });
 
   // PHOTO
@@ -467,6 +470,32 @@ export default function CuraManage() {
   const [docsLoading, setDocsLoading] = useState(false);
   const [uploadingDocs, setUploadingDocs] = useState(false);
   const docsInputRef = useRef(null);
+  const folderInputRef = useRef(null);
+  const [folderModal, setFolderModal] = useState(false);
+  const [folderFiles, setFolderFiles] = useState([]);
+  const [folderClientId, setFolderClientId] = useState("");
+  const [importingFolder, setImportingFolder] = useState(false);
+
+  async function handleFolderImport(e) {
+    const files = Array.from(e.target.files);
+    if(files.length === 0) return;
+    e.target.value = "";
+    setFolderFiles(files);
+    setFolderClientId("");
+    setFolderModal(true);
+  }
+
+  async function importFolderToClient() {
+    if(!folderClientId) { showToast("Selecciona un cliente", false); return; }
+    const client = clients.find(c => c.id === folderClientId);
+    if(!client) return;
+    setImportingFolder(true);
+    await uploadClientDocs(folderFiles, folderClientId);
+    setImportingFolder(false);
+    setFolderModal(false);
+    setFolderFiles([]);
+    showToast(`${folderFiles.length} archivos importados a ${client.name} ✓`);
+  }
 
   async function loadClientDocs(clientId) {
     setDocsLoading(true);
@@ -1151,6 +1180,8 @@ export default function CuraManage() {
               <button style={S.btnG} onClick={load} title="Recargar">↻</button>
               <button style={{...S.btnG,color:"#f59e0b",borderColor:"#fde68a",background:"#fffbeb"}} onClick={openPassportModal}>📷 Escanear</button>
               <button style={S.btnG} onClick={openAdd}>+ Nuevo cliente</button>
+              <button style={{...S.btnG,color:"#10b981",borderColor:"#a7f3d0",background:"#ecfdf5"}} onClick={()=>folderInputRef.current?.click()}>📂 Importar carpeta</button>
+              <input ref={folderInputRef} type="file" multiple webkitdirectory="" style={{display:"none"}} onChange={handleFolderImport}/>
               <button style={S.btnP} onClick={()=>setShowAI(!showAI)}>✦ Asistente IA</button>
             </div>
           </div>
@@ -1222,11 +1253,16 @@ export default function CuraManage() {
                     <option value="contabilidad">Contabilidad</option>
                   </select>
                   <select style={{...S.input,width:"auto",cursor:"pointer"}} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
-                    <option value="">Todos</option>
+                    <option value="">Todos los estatus</option>
                     <option value="proceso">En proceso</option>
                     <option value="copy_cliente">Copy cliente</option>
                     <option value="aprobado">Aprobado</option>
                     <option value="rechazado">Rechazado</option>
+                  </select>
+                  <select style={{...S.input,width:"auto",cursor:"pointer"}} value={filterModalidad} onChange={e=>setFilterModalidad(e.target.value)}>
+                    <option value="">Todas las modalidades</option>
+                    <option value="riba_e_luga">🏝️ Riba e Luga</option>
+                    <option value="convencional">📋 Convencional</option>
                   </select>
                 </div>
                 {filtered.length===0?<div style={{...S.card,textAlign:"center",padding:"48px",color:"#94a3b8"}}>Sin resultados</div>:filtered.map(c=><ClientCard key={c.id} c={c}/>)}
@@ -1280,6 +1316,7 @@ export default function CuraManage() {
             {loading&&<span style={{fontSize:12,color:"#94a3b8",animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span>}
             <button style={{...S.btnG,color:"#f59e0b",borderColor:"#fde68a",background:"#fffbeb",padding:"8px 10px",fontSize:15}} onClick={openPassportModal}>📷</button>
             <button style={{...S.btnG,padding:"8px 12px",fontSize:15}} onClick={openAdd}>+</button>
+            <button style={{...S.btnG,color:"#10b981",borderColor:"#a7f3d0",background:"#ecfdf5",padding:"8px 10px",fontSize:15}} onClick={()=>folderInputRef.current?.click()}>📂</button>
             <button style={{...S.btnP,padding:"8px 12px"}} onClick={()=>setShowAI(!showAI)}>✦</button>
           </div>
         </div>
@@ -1320,11 +1357,18 @@ export default function CuraManage() {
                 <option value="contabilidad">Contabilidad</option>
               </select>
               <select style={{...S.input,flex:1,cursor:"pointer"}} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
-                <option value="">Todos</option>
+                <option value="">Estatus</option>
                 <option value="proceso">En proceso</option>
                 <option value="copy_cliente">Copy cliente</option>
                 <option value="aprobado">Aprobado</option>
                 <option value="rechazado">Rechazado</option>
+              </select>
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:10}}>
+              <select style={{...S.input,flex:1,cursor:"pointer"}} value={filterModalidad} onChange={e=>setFilterModalidad(e.target.value)}>
+                <option value="">Modalidad</option>
+                <option value="riba_e_luga">🏝️ Riba e Luga</option>
+                <option value="convencional">📋 Convencional</option>
               </select>
             </div>
             {filtered.map(c=><ClientCard key={c.id} c={c}/>)}
@@ -1378,6 +1422,61 @@ export default function CuraManage() {
           <div style={{position:"relative"}}>
             <img src={photoViewer} style={{maxWidth:"90vw",maxHeight:"85vh",objectFit:"contain",borderRadius:12,boxShadow:"0 25px 50px rgba(0,0,0,0.5)"}} alt="Foto cliente"/>
             <button onClick={()=>setPhotoViewer(null)} style={{position:"absolute",top:-14,right:-14,width:32,height:32,borderRadius:"50%",background:"#fff",border:"none",color:"#1e293b",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* FOLDER IMPORT MODAL */}
+      {folderModal&&(
+        <div style={S.overlay} onClick={e=>{if(e.target===e.currentTarget){setFolderModal(false);setFolderFiles([]);}}}>
+          <div style={{...S.modal,maxHeight:"80vh"}} onClick={e=>e.stopPropagation()}>
+            <div style={S.mHead}>
+              <div>
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:700}}>📂 Importar archivos</div>
+                <div style={{fontSize:12,color:"#94a3b8",marginTop:1}}>{folderFiles.length} archivos seleccionados</div>
+              </div>
+              <button style={S.mClose} onClick={()=>{setFolderModal(false);setFolderFiles([]);setFolderClientId("");}}>✕</button>
+            </div>
+            <div style={{padding:"18px 20px"}}>
+              {/* Client selector */}
+              <div style={{marginBottom:16}}>
+                <label style={S.fLabel}>¿A qué cliente pertenecen estos archivos?</label>
+                <select style={{...S.input,cursor:"pointer"}} value={folderClientId} onChange={e=>setFolderClientId(e.target.value)}>
+                  <option value="">Selecciona un cliente...</option>
+                  {[...clients].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>(
+                    <option key={c.id} value={c.id}>{c.name} — {c.client_id}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Files preview */}
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:11,color:"#94a3b8",textTransform:"uppercase",fontWeight:600,marginBottom:8}}>Archivos a importar</div>
+                <div style={{maxHeight:240,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+                  {folderFiles.slice(0,50).map((f,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#f8fafc",borderRadius:8,border:"1px solid #e2e8f0"}}>
+                      <span style={{fontSize:18}}>{f.type.includes("pdf")?"📕":f.type.includes("image")?"🖼️":"📄"}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:500,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
+                        <div style={{fontSize:11,color:"#94a3b8"}}>{Math.round(f.size/1024)} KB</div>
+                      </div>
+                    </div>
+                  ))}
+                  {folderFiles.length>50&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px"}}>...y {folderFiles.length-50} archivos más</div>}
+                </div>
+              </div>
+
+              {importingFolder&&<div style={{textAlign:"center",padding:"16px",background:"#f0f0ff",borderRadius:10,marginBottom:12}}>
+                <div style={{fontSize:24,animation:"spin 1s linear infinite",display:"inline-block",color:"#6366f1"}}>⟳</div>
+                <div style={{fontSize:13,color:"#6366f1",marginTop:8}}>Importando archivos...</div>
+              </div>}
+            </div>
+            <div style={S.mFoot}>
+              <button style={S.btnG} onClick={()=>{setFolderModal(false);setFolderFiles([]);setFolderClientId("");}}>Cancelar</button>
+              <button style={{...S.btnP,opacity:!folderClientId||importingFolder?0.5:1}} onClick={importFolderToClient} disabled={!folderClientId||importingFolder}>
+                {importingFolder?"Importando...":"📂 Importar al expediente"}
+              </button>
+            </div>
           </div>
         </div>
       )}
