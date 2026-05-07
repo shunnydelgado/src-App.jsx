@@ -24,20 +24,30 @@ async function supabaseReq(method, path, body, token) {
 }
 
 const STATUS_CFG = {
-  proceso:   { label:"En proceso",  color:"#3b82f6", bg:"#eff6ff", border:"#bfdbfe" },
-  pendiente: { label:"Pendiente",   color:"#f59e0b", bg:"#fffbeb", border:"#fde68a" },
-  aprobado:  { label:"Aprobado",    color:"#10b981", bg:"#ecfdf5", border:"#a7f3d0" },
-  rechazado: { label:"Rechazado",   color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
+  proceso:      { label:"En proceso",    color:"#3b82f6", bg:"#eff6ff", border:"#bfdbfe" },
+  copy_cliente: { label:"Copy cliente",  color:"#f59e0b", bg:"#fffbeb", border:"#fde68a" },
+  aprobado:     { label:"Aprobado",      color:"#10b981", bg:"#ecfdf5", border:"#a7f3d0" },
+  rechazado:    { label:"Rechazado",     color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
 };
 const TYPE_CFG = {
-  permiso:      { label:"Permiso trabajo", color:"#8b5cf6", bg:"#f5f3ff", border:"#ddd6fe" },
-  residencia:   { label:"Residencia",      color:"#0ea5e9", bg:"#f0f9ff", border:"#bae6fd" },
-  contabilidad: { label:"Contabilidad",    color:"#f59e0b", bg:"#fffbeb", border:"#fde68a" },
+  empleado:     { label:"Empleado",        color:"#8b5cf6", bg:"#f5f3ff", border:"#ddd6fe" },
+  compania:     { label:"Compañía",        color:"#6366f1", bg:"#f0f0ff", border:"#c7d2fe" },
+  union_familiar:{ label:"Unión familiar", color:"#0ea5e9", bg:"#f0f9ff", border:"#bae6fd" },
+  rentanier:    { label:"Rentanier",       color:"#10b981", bg:"#ecfdf5", border:"#a7f3d0" },
+  residencia:   { label:"Residencia",      color:"#f59e0b", bg:"#fffbeb", border:"#fde68a" },
+  contabilidad: { label:"Contabilidad",    color:"#64748b", bg:"#f8fafc", border:"#e2e8f0" },
+};
+const MODALIDAD_CFG = {
+  riba_e_luga:  { label:"Riba e Luga",   color:"#f59e0b", bg:"#fffbeb", border:"#fde68a" },
+  convencional: { label:"Convencional",  color:"#6366f1", bg:"#f0f0ff", border:"#c7d2fe" },
 };
 const REQUIRED_DOCS = {
-  permiso: ["Pasaporte vigente","Foto reciente","Contrato de trabajo","Carta del empleador","Certificado médico","Antecedentes penales","Formulario de solicitud","Comprobante de pago"],
-  residencia: ["Pasaporte vigente","Foto reciente","Certificado de nacimiento","Antecedentes penales","Comprobante de ingresos","Seguro médico","Formulario de solicitud","Comprobante de domicilio","Comprobante de pago"],
-  contabilidad: ["Registro mercantil","RIF o número fiscal","Estados de cuenta","Facturas del período","Nómina de empleados","Contrato de servicios"],
+  empleado:      ["Pasaporte vigente","Foto reciente","Contrato de trabajo","Carta del empleador","Certificado médico","Antecedentes penales","Formulario de solicitud","Comprobante de pago a Migración"],
+  compania:      ["Pasaporte vigente","Foto reciente","Registro mercantil","Carta de la compañía","Certificado médico","Antecedentes penales","Formulario de solicitud","Comprobante de pago a Migración"],
+  union_familiar:["Pasaporte vigente","Foto reciente","Acta de matrimonio/nacimiento apostillada","Permiso residencia del familiar","Comprobante de ingresos familiar","Certificado médico","Antecedentes penales","Formulario de solicitud","Comprobante de pago a Migración"],
+  rentanier:     ["Pasaporte vigente","Foto reciente","Comprobante de ingresos pasivos","Estado de cuenta bancario","Seguro médico","Antecedentes penales","Formulario de solicitud","Comprobante de pago a Migración"],
+  residencia:    ["Pasaporte vigente","Foto reciente","Certificado de nacimiento apostillado","Antecedentes penales","Comprobante de ingresos","Seguro médico","Formulario de solicitud","Comprobante de domicilio","Comprobante de pago a Migración"],
+  contabilidad:  ["Registro mercantil","RIF o número fiscal","Estados de cuenta","Facturas del período","Nómina de empleados","Contrato de servicios"],
 };
 
 function addWeeks(dateStr, weeks) {
@@ -51,6 +61,12 @@ function addMonths(dateStr, months) {
   const d = new Date(dateStr);
   d.setMonth(d.getMonth() + months);
   return d.toISOString().split("T")[0];
+}
+
+function calcVencimiento(fechaAprobacion, duracion) {
+  if(!fechaAprobacion || !duracion) return "";
+  const meses = { "6m":6, "1y":12, "2y":24, "3y":36 };
+  return addMonths(fechaAprobacion, meses[duracion] || 12);
 }
 
 async function compressImage(dataUrl, maxWidth=800, quality=0.82) {
@@ -281,6 +297,12 @@ export default function CuraManage() {
       const days=Math.round((new Date(c.fecha_tentativa_aprobacion)-Date.now())/86400000);
       if(days<=14) notifs.push({urgent:days<=0,icon:"📋",title:`${c.name} — Aprobación`,sub:days<=0?`Vencida hace ${Math.abs(days)}d`:`En ${days} días`,client:c});
     }
+    // Renewal alarm - 4 months before expiry
+    if(c.expiry&&c.status==="aprobado"){
+      const daysToExpiry=Math.round((new Date(c.expiry)-Date.now())/86400000);
+      if(daysToExpiry<=120&&daysToExpiry>0) notifs.push({urgent:daysToExpiry<=30,icon:"🔄",title:`${c.name} — Renovar permiso`,sub:`Vence en ${daysToExpiry} días · ${c.client_id}`,client:c});
+      else if(daysToExpiry<=0) notifs.push({urgent:true,icon:"🔴",title:`${c.name} — Permiso vencido`,sub:`Vencido hace ${Math.abs(daysToExpiry)} días · ${c.client_id}`,client:c});
+    }
   });
 
   const filtered=clients.filter(c=>{
@@ -368,14 +390,19 @@ export default function CuraManage() {
   function closePassportModal(){setPassportModal(false);setPassportPreview(null);setScanStep("choose");}
 
   // FORM
-  function emptyForm(){return{client_id:`CUR-${String(clients.length+1).padStart(3,"0")}`,type:"permiso",status:"proceso",total:"",paid:"0",expiry:"",name:"",email:"",phone:"",nationality:"",birthdate:"",passport:"",entry_date:"",emergency_contact:"",address:"",notes:"",documents:[],referido:"",caso_descripcion:"",photo_url:"",fecha_solicitud:"",fecha_copy_cliente:"",fecha_tentativa_copy:"",fecha_tentativa_aprobacion:"",declaracion_ob:false,ob_mensaje:""};}
+  function emptyForm(){return{client_id:`CUR-${String(clients.length+1).padStart(3,"0")}`,type:"empleado",status:"proceso",modalidad:"convencional",duracion_permiso:"1y",total:"",paid:"0",expiry:"",fecha_vencimiento_real:"",name:"",email:"",phone:"",nationality:"",birthdate:"",passport:"",entry_date:"",emergency_contact:"",address:"",notes:"",documents:[],referido:"",caso_descripcion:"",photo_url:"",fecha_solicitud:"",fecha_copy_cliente:"",fecha_tentativa_copy:"",fecha_tentativa_aprobacion:"",declaracion_ob:false,ob_mensaje:""};}
   function openAdd(){setForm(emptyForm());setModal({mode:"add"});}
-  function openEdit(c){setForm({...c,total:String(c.total||""),paid:String(c.paid||""),expiry:c.expiry||"",birthdate:c.birthdate||"",entry_date:c.entry_date||"",documents:c.documents||[],referido:c.referido||"",caso_descripcion:c.caso_descripcion||"",photo_url:c.photo_url||"",fecha_solicitud:c.fecha_solicitud||"",fecha_copy_cliente:c.fecha_copy_cliente||"",fecha_tentativa_copy:c.fecha_tentativa_copy||"",fecha_tentativa_aprobacion:c.fecha_tentativa_aprobacion||"",declaracion_ob:c.declaracion_ob||false,ob_mensaje:c.ob_mensaje||""});setModal({mode:"edit",id:c.id});}
+  function openEdit(c){setForm({...c,total:String(c.total||""),paid:String(c.paid||""),expiry:c.expiry||"",fecha_vencimiento_real:c.fecha_vencimiento_real||"",birthdate:c.birthdate||"",entry_date:c.entry_date||"",documents:c.documents||[],referido:c.referido||"",caso_descripcion:c.caso_descripcion||"",photo_url:c.photo_url||"",fecha_solicitud:c.fecha_solicitud||"",fecha_copy_cliente:c.fecha_copy_cliente||"",fecha_tentativa_copy:c.fecha_tentativa_copy||"",fecha_tentativa_aprobacion:c.fecha_tentativa_aprobacion||"",declaracion_ob:c.declaracion_ob||false,ob_mensaje:c.ob_mensaje||"",modalidad:c.modalidad||"convencional",duracion_permiso:c.duracion_permiso||"1y"});setModal({mode:"edit",id:c.id});}
 
   async function saveClient(){
     if(!form.name?.trim()){showToast("Nombre requerido",false);return;}
     setSaving(true);
-    const data={client_id:form.client_id,name:form.name,type:form.type,status:form.status,expiry:form.expiry||null,total:parseFloat(form.total)||0,paid:parseFloat(form.paid)||0,email:form.email,notes:form.notes,phone:form.phone,nationality:form.nationality,birthdate:form.birthdate||null,passport:form.passport,entry_date:form.entry_date||null,emergency_contact:form.emergency_contact,address:form.address,documents:form.documents||[],referido:form.referido||null,caso_descripcion:form.caso_descripcion||null,photo_url:form.photo_url||null,fecha_solicitud:form.fecha_solicitud||null,fecha_copy_cliente:form.fecha_copy_cliente||null,fecha_tentativa_copy:form.fecha_tentativa_copy||null,fecha_tentativa_aprobacion:form.fecha_tentativa_aprobacion||null,declaracion_ob:form.declaracion_ob||false,ob_mensaje:form.ob_mensaje||null};
+    // Auto-calculate vencimiento when approved
+    let fechaVencimientoReal = form.fecha_vencimiento_real||null;
+    if(form.status==="aprobado" && form.fecha_tentativa_aprobacion && form.duracion_permiso && !fechaVencimientoReal) {
+      fechaVencimientoReal = calcVencimiento(form.fecha_tentativa_aprobacion, form.duracion_permiso);
+    }
+    const data={client_id:form.client_id,name:form.name,type:form.type,status:form.status,modalidad:form.modalidad||"convencional",duracion_permiso:form.duracion_permiso||null,expiry:form.status==="aprobado"?(fechaVencimientoReal||form.expiry||null):form.expiry||null,fecha_vencimiento_real:fechaVencimientoReal,total:parseFloat(form.total)||0,paid:parseFloat(form.paid)||0,email:form.email,notes:form.notes,phone:form.phone,nationality:form.nationality,birthdate:form.birthdate||null,passport:form.passport,entry_date:form.entry_date||null,emergency_contact:form.emergency_contact,address:form.address,documents:form.documents||[],referido:form.referido||null,caso_descripcion:form.caso_descripcion||null,photo_url:form.photo_url||null,fecha_solicitud:form.fecha_solicitud||null,fecha_copy_cliente:form.fecha_copy_cliente||null,fecha_tentativa_copy:form.fecha_tentativa_copy||null,fecha_tentativa_aprobacion:form.fecha_tentativa_aprobacion||null,declaracion_ob:form.declaracion_ob||false,ob_mensaje:form.ob_mensaje||null};
     try{
       if(modal.mode==="add"){await supabaseReq("POST","/clients",data,accessToken);showToast("Cliente guardado ✓");}
       else{await supabaseReq("PATCH",`/clients?id=eq.${modal.id}`,data,accessToken);showToast("Actualizado ✓");}
@@ -433,6 +460,71 @@ export default function CuraManage() {
     const missing=(REQUIRED_DOCS[c.type]||[]).filter(d=>!(c.documents||[]).includes(d));
     setShowAI(true);
     sendAI(`Analiza: ${c.name} (${c.client_id})\nTipo: ${c.type} | Estatus: ${c.status}\nDeuda: ANG ${debt}\nDocs faltantes: ${missing.length>0?missing.join(", "):"Ninguno"}\nCaso: ${c.caso_descripcion||"Sin descripción"}`);
+  }
+
+  // DOCUMENTS
+  const [clientDocs, setClientDocs] = useState([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [uploadingDocs, setUploadingDocs] = useState(false);
+  const docsInputRef = useRef(null);
+
+  async function loadClientDocs(clientId) {
+    setDocsLoading(true);
+    try {
+      const res = await supabaseReq("GET", `/client_documents?client_id=eq.${clientId}&order=created_at.desc&select=*`, null, accessToken);
+      setClientDocs(res);
+    } catch(e) { console.error(e); }
+    setDocsLoading(false);
+  }
+
+  async function uploadClientDocs(files, clientId) {
+    setUploadingDocs(true);
+    let uploaded = 0;
+    for(const file of files) {
+      try {
+        const ext = file.name.split(".").pop();
+        const path = `${clientId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g,"_")}`;
+        const { error } = await supabase.storage.from("client-photos").upload(path, file, { upsert:true, contentType:file.type });
+        if(error) throw error;
+        const { data: urlData } = supabase.storage.from("client-photos").getPublicUrl(path);
+        await supabaseReq("POST", "/client_documents", {
+          client_id: clientId,
+          name: file.name,
+          url: urlData.publicUrl,
+          type: file.type,
+          size: file.size,
+        }, accessToken);
+        uploaded++;
+      } catch(e) { console.error("Error uploading", file.name, e.message); }
+    }
+    showToast(`${uploaded} archivo(s) subido(s) ✓`);
+    await loadClientDocs(clientId);
+    setUploadingDocs(false);
+  }
+
+  async function deleteClientDoc(docId, clientId) {
+    if(!window.confirm("¿Eliminar este documento?")) return;
+    try {
+      await supabaseReq("DELETE", `/client_documents?id=eq.${docId}`, null, accessToken);
+      await loadClientDocs(clientId);
+      showToast("Documento eliminado");
+    } catch(e) { showToast("Error", false); }
+  }
+
+  function getFileIcon(type) {
+    if(!type) return "📄";
+    if(type.includes("pdf")) return "📕";
+    if(type.includes("image")) return "🖼️";
+    if(type.includes("word")) return "📘";
+    if(type.includes("excel") || type.includes("spreadsheet")) return "📗";
+    return "📄";
+  }
+
+  function formatFileSize(bytes) {
+    if(!bytes) return "";
+    if(bytes < 1024) return bytes + " B";
+    if(bytes < 1024*1024) return Math.round(bytes/1024) + " KB";
+    return (bytes/(1024*1024)).toFixed(1) + " MB";
   }
 
   // AVATAR
@@ -502,7 +594,7 @@ export default function CuraManage() {
 
     return(
       <div style={{...S.card,marginBottom:10,cursor:"pointer",transition:"box-shadow 0.15s,transform 0.15s"}}
-        onClick={()=>setClientModal(c)}
+        onClick={()=>{setClientModal(c);loadClientDocs(c.id);}}
         onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)";e.currentTarget.style.transform="translateY(-1px)";}}
         onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.transform="translateY(0)";}}>
         <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:12}}>
@@ -520,6 +612,7 @@ export default function CuraManage() {
 
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
           <Badge cfg={TYPE_CFG[c.type]||{label:c.type,color:"#64748b",bg:"#f8fafc",border:"#e2e8f0"}}/>
+          {c.modalidad&&c.type!=="contabilidad"&&<span style={{fontSize:11,color:MODALIDAD_CFG[c.modalidad]?.color||"#6366f1",padding:"3px 8px",borderRadius:20,background:MODALIDAD_CFG[c.modalidad]?.bg||"#f0f0ff",border:`1px solid ${MODALIDAD_CFG[c.modalidad]?.border||"#c7d2fe"}`}}>{c.modalidad==="riba_e_luga"?"🏝️ Riba e Luga":"📋 Convencional"}</span>}
           {c.referido&&<span style={{fontSize:11,color:"#f59e0b",padding:"3px 8px",borderRadius:20,background:"#fffbeb",border:"1px solid #fde68a"}}>👤 {c.referido}</span>}
           {c.expiry&&<span style={{fontSize:11,color:urgent?"#ef4444":"#64748b",padding:"3px 8px",borderRadius:20,background:urgent?"#fef2f2":"#f8fafc",border:`1px solid ${urgent?"#fecaca":"#e2e8f0"}`}}>{new Date(c.expiry).toLocaleDateString("es",{day:"2-digit",month:"short",year:"2-digit"})}{urgent?" ⚠":""}</span>}
           {missing>0&&<span style={{fontSize:11,color:"#ef4444",padding:"3px 8px",borderRadius:20,background:"#fef2f2",border:"1px solid #fecaca"}}>⚠ {missing} docs</span>}
@@ -581,7 +674,7 @@ export default function CuraManage() {
       <tr style={{cursor:"pointer",transition:"background 0.1s"}}
         onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
         onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-        onClick={()=>setClientModal(c)}>
+        onClick={()=>{setClientModal(c);loadClientDocs(c.id);}}>
         <td style={{padding:"12px 16px",borderBottom:"1px solid #f1f5f9"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <Avatar url={c.photo_url} name={c.name} size={34}/>
@@ -694,10 +787,22 @@ export default function CuraManage() {
           <div style={{marginLeft:"auto",display:"flex",gap:6}}>
             <button style={S.btnS} onClick={()=>exportToPDF(clientModal)}>⬇ PDF</button>
             <button style={S.btnG} onClick={()=>{setClientModal(null);openGmail(clientModal);}}>✉</button>
-            <button style={S.mClose} onClick={()=>setClientModal(null)}>✕</button>
+            <button style={S.mClose} onClick={()=>{setClientModal(null);setClientDocs([]);}}>✕</button>
           </div>
         </div>
         <div style={{padding:"18px 20px"}}>
+          {/* Modalidad badge in folder */}
+          {clientModal.modalidad&&clientModal.type!=="contabilidad"&&<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+            <span style={{fontSize:12,fontWeight:600,color:MODALIDAD_CFG[clientModal.modalidad]?.color||"#6366f1",padding:"4px 12px",borderRadius:20,background:MODALIDAD_CFG[clientModal.modalidad]?.bg||"#f0f0ff",border:`1px solid ${MODALIDAD_CFG[clientModal.modalidad]?.border||"#c7d2fe"}`}}>
+              {clientModal.modalidad==="riba_e_luga"?"🏝️ Riba e Luga":"📋 Convencional"}
+            </span>
+            {clientModal.duracion_permiso&&<span style={{fontSize:12,fontWeight:600,color:"#6366f1",padding:"4px 12px",borderRadius:20,background:"#f0f0ff",border:"1px solid #c7d2fe"}}>
+              ⏱️ {{"6m":"6 meses","1y":"1 año","2y":"2 años","3y":"3 años"}[clientModal.duracion_permiso]||clientModal.duracion_permiso}
+            </span>}
+            {clientModal.fecha_vencimiento_real&&<span style={{fontSize:12,fontWeight:600,color:"#10b981",padding:"4px 12px",borderRadius:20,background:"#ecfdf5",border:"1px solid #a7f3d0"}}>
+              📅 Vence: {new Date(clientModal.fecha_vencimiento_real).toLocaleDateString("es",{day:"2-digit",month:"short",year:"numeric"})}
+            </span>}
+          </div>}
           {clientModal.declaracion_ob&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:clientModal.ob_mensaje?6:0}}>
               <span>📊</span><div style={{fontSize:13,fontWeight:600,color:"#f59e0b"}}>Declaración OB mensual activa</div>
@@ -734,10 +839,53 @@ export default function CuraManage() {
             <div style={{fontSize:10,color:"#94a3b8",textTransform:"uppercase",fontWeight:600,marginBottom:4}}>Notas</div>
             <div style={{fontSize:13,lineHeight:1.6,color:"#475569"}}>{clientModal.notes}</div>
           </div>}
+
+          {/* EXPEDIENTE DIGITAL */}
+          <div style={{marginTop:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:"0.07em"}}>
+                📁 Expediente Digital {clientDocs.length>0&&<span style={{color:"#6366f1"}}>({clientDocs.length})</span>}
+              </div>
+              <button style={{...S.btnP,padding:"6px 12px",fontSize:12}} onClick={()=>docsInputRef.current?.click()} disabled={uploadingDocs}>
+                {uploadingDocs?"Subiendo...":"+ Agregar archivos"}
+              </button>
+              <input ref={docsInputRef} type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" style={{display:"none"}}
+                onChange={e=>{ if(e.target.files.length>0){ uploadClientDocs(Array.from(e.target.files),clientModal.id); e.target.value=""; }}}/>
+            </div>
+
+            {docsLoading&&<div style={{textAlign:"center",padding:"20px",color:"#94a3b8",fontSize:13}}>Cargando documentos...</div>}
+
+            {!docsLoading&&clientDocs.length===0&&(
+              <div style={{background:"#f8fafc",border:"2px dashed #e2e8f0",borderRadius:12,padding:"24px",textAlign:"center",cursor:"pointer"}} onClick={()=>docsInputRef.current?.click()}>
+                <div style={{fontSize:32,marginBottom:8}}>📂</div>
+                <div style={{fontSize:13,fontWeight:600,color:"#64748b",marginBottom:4}}>Sin documentos aún</div>
+                <div style={{fontSize:12,color:"#94a3b8"}}>Toca para subir archivos (PDF, imágenes, Word, Excel)</div>
+              </div>
+            )}
+
+            {!docsLoading&&clientDocs.length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {clientDocs.map(doc=>(
+                  <div key={doc.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"#f8fafc",borderRadius:10,border:"1px solid #e2e8f0"}}>
+                    <span style={{fontSize:22,flexShrink:0}}>{getFileIcon(doc.type)}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:500,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{doc.name}</div>
+                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{formatFileSize(doc.size)} · {new Date(doc.created_at).toLocaleDateString("es",{day:"2-digit",month:"short",year:"numeric"})}</div>
+                    </div>
+                    <div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <a href={doc.url} target="_blank" rel="noreferrer" style={{...S.btnG,padding:"5px 10px",fontSize:12,textDecoration:"none",display:"flex",alignItems:"center"}} onClick={e=>e.stopPropagation()}>👁️</a>
+                      <a href={doc.url} download={doc.name} style={{...S.btnS,padding:"5px 10px",fontSize:12,textDecoration:"none",display:"flex",alignItems:"center"}} onClick={e=>e.stopPropagation()}>⬇</a>
+                      <button style={{...S.btnD,padding:"5px 10px",fontSize:12}} onClick={e=>{e.stopPropagation();deleteClientDoc(doc.id,clientModal.id);}}>✕</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div style={S.mFoot}>
-          <button style={S.btnG} onClick={()=>{setClientModal(null);askAbout(clientModal);}}>✦ Analizar con IA</button>
-          <button style={S.btnP} onClick={()=>{setClientModal(null);openEdit(clientModal);}}>✎ Editar</button>
+          <button style={S.btnG} onClick={()=>{setClientModal(null);setClientDocs([]);askAbout(clientModal);}}>✦ Analizar con IA</button>
+          <button style={S.btnP} onClick={()=>{setClientModal(null);setClientDocs([]);openEdit(clientModal);}}>✎ Editar</button>
         </div>
       </div>
     </div>
@@ -786,14 +934,75 @@ export default function CuraManage() {
             <div style={{gridColumn:"1/-1",paddingBottom:8,borderBottom:"1px solid #f1f5f9",marginBottom:4,marginTop:8}}>
               <div style={{fontSize:11,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Trámite y pagos</div>
             </div>
+            {/* MODALIDAD - Riba e Luga o Convencional */}
+            {(form.type!=="contabilidad")&&<div style={{gridColumn:"1/-1"}}>
+              <label style={S.fLabel}>Modalidad del trámite</label>
+              <div style={{display:"flex",gap:10}}>
+                {[{val:"convencional",label:"Convencional",icon:"📋"},{val:"riba_e_luga",label:"Riba e Luga",icon:"🏝️"}].map(opt=>(
+                  <div key={opt.val} style={{flex:1,padding:"12px 16px",borderRadius:10,border:`2px solid ${form.modalidad===opt.val?"#6366f1":"#e2e8f0"}`,background:form.modalidad===opt.val?"#f0f0ff":"#fff",cursor:"pointer",display:"flex",alignItems:"center",gap:8,transition:"all 0.15s"}} onClick={()=>setForm(p=>({...p,modalidad:opt.val}))}>
+                    <span style={{fontSize:18}}>{opt.icon}</span>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600,color:form.modalidad===opt.val?"#6366f1":"#1e293b"}}>{opt.label}</div>
+                    </div>
+                    {form.modalidad===opt.val&&<span style={{marginLeft:"auto",color:"#6366f1",fontSize:16}}>✓</span>}
+                  </div>
+                ))}
+              </div>
+            </div>}
             <div>
-              <label style={S.fLabel}>Tipo</label>
-              <select style={{...S.input,cursor:"pointer"}} value={form.type||"permiso"} onChange={e=>setForm(p=>({...p,type:e.target.value}))}><option value="permiso">Permiso trabajo</option><option value="residencia">Residencia</option><option value="contabilidad">Contabilidad</option></select>
+              <label style={S.fLabel}>Tipo de permiso</label>
+              <select style={{...S.input,cursor:"pointer"}} value={form.type||"empleado"} onChange={e=>setForm(p=>({...p,type:e.target.value}))}>
+                <option value="empleado">Empleado</option>
+                <option value="compania">Compañía</option>
+                <option value="union_familiar">Unión familiar</option>
+                <option value="rentanier">Rentanier</option>
+                <option value="residencia">Residencia</option>
+                <option value="contabilidad">Contabilidad</option>
+              </select>
             </div>
             <div>
               <label style={S.fLabel}>Estatus</label>
-              <select style={{...S.input,cursor:"pointer"}} value={form.status||"proceso"} onChange={e=>setForm(p=>({...p,status:e.target.value}))}><option value="proceso">En proceso</option><option value="pendiente">Pendiente</option><option value="aprobado">Aprobado</option><option value="rechazado">Rechazado</option></select>
+              <select style={{...S.input,cursor:"pointer"}} value={form.status||"proceso"} onChange={e=>{
+                const newStatus = e.target.value;
+                // Auto-calc vencimiento when approved
+                let updates = {status: newStatus};
+                if(newStatus==="aprobado" && form.fecha_tentativa_aprobacion && form.duracion_permiso) {
+                  const venc = calcVencimiento(form.fecha_tentativa_aprobacion, form.duracion_permiso);
+                  updates.fecha_vencimiento_real = venc;
+                  updates.expiry = venc;
+                }
+                setForm(p=>({...p,...updates}));
+              }}>
+                <option value="proceso">En proceso</option>
+                <option value="copy_cliente">Copy cliente</option>
+                <option value="aprobado">Aprobado</option>
+                <option value="rechazado">Rechazado</option>
+              </select>
             </div>
+            {/* Duración del permiso */}
+            {form.type!=="contabilidad"&&<div>
+              <label style={S.fLabel}>Duración del permiso</label>
+              <select style={{...S.input,cursor:"pointer"}} value={form.duracion_permiso||"1y"} onChange={e=>{
+                const dur = e.target.value;
+                let updates = {duracion_permiso: dur};
+                if(form.status==="aprobado" && form.fecha_tentativa_aprobacion) {
+                  const venc = calcVencimiento(form.fecha_tentativa_aprobacion, dur);
+                  updates.fecha_vencimiento_real = venc;
+                  updates.expiry = venc;
+                }
+                setForm(p=>({...p,...updates}));
+              }}>
+                <option value="6m">6 meses</option>
+                <option value="1y">1 año</option>
+                <option value="2y">2 años</option>
+                <option value="3y">3 años</option>
+              </select>
+            </div>}
+            {/* Fecha vencimiento real - shown when approved */}
+            {form.status==="aprobado"&&<div>
+              <label style={S.fLabel}>📅 Fecha vencimiento real</label>
+              <input style={{...S.input,borderColor:"#a7f3d0",background:"#ecfdf5"}} type="date" value={form.fecha_vencimiento_real||form.expiry||""} onChange={e=>setForm(p=>({...p,fecha_vencimiento_real:e.target.value,expiry:e.target.value}))}/>
+            </div>}
             <div>
               <label style={S.fLabel}>Vencimiento permiso</label>
               <input style={S.input} type="date" value={form.expiry||""} onChange={e=>setForm(p=>({...p,expiry:e.target.value}))}/>
@@ -1003,8 +1212,22 @@ export default function CuraManage() {
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
                   <div style={S.secTitle}>Todos los clientes <span style={{fontFamily:"inherit",fontSize:14,color:"#94a3b8",fontWeight:400}}>({filtered.length})</span></div>
                   <input style={{...S.input,maxWidth:220,flex:"none"}} placeholder="Buscar nombre, ID..." value={search} onChange={e=>setSearch(e.target.value)}/>
-                  <select style={{...S.input,width:"auto",cursor:"pointer"}} value={filterType} onChange={e=>setFilterType(e.target.value)}><option value="">Todos los tipos</option><option value="permiso">Permiso trabajo</option><option value="residencia">Residencia</option><option value="contabilidad">Contabilidad</option></select>
-                  <select style={{...S.input,width:"auto",cursor:"pointer"}} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}><option value="">Todos</option><option value="proceso">En proceso</option><option value="pendiente">Pendiente</option><option value="aprobado">Aprobado</option><option value="rechazado">Rechazado</option></select>
+                  <select style={{...S.input,width:"auto",cursor:"pointer"}} value={filterType} onChange={e=>setFilterType(e.target.value)}>
+                    <option value="">Todos los tipos</option>
+                    <option value="empleado">Empleado</option>
+                    <option value="compania">Compañía</option>
+                    <option value="union_familiar">Unión familiar</option>
+                    <option value="rentanier">Rentanier</option>
+                    <option value="residencia">Residencia</option>
+                    <option value="contabilidad">Contabilidad</option>
+                  </select>
+                  <select style={{...S.input,width:"auto",cursor:"pointer"}} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
+                    <option value="">Todos</option>
+                    <option value="proceso">En proceso</option>
+                    <option value="copy_cliente">Copy cliente</option>
+                    <option value="aprobado">Aprobado</option>
+                    <option value="rechazado">Rechazado</option>
+                  </select>
                 </div>
                 {filtered.length===0?<div style={{...S.card,textAlign:"center",padding:"48px",color:"#94a3b8"}}>Sin resultados</div>:filtered.map(c=><ClientCard key={c.id} c={c}/>)}
               </div>}
@@ -1087,8 +1310,22 @@ export default function CuraManage() {
           {section==="clients"&&<>
             <div style={{display:"flex",gap:8,marginBottom:10}}><input style={{...S.input}} placeholder="Buscar..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
             <div style={{display:"flex",gap:8,marginBottom:14}}>
-              <select style={{...S.input,flex:1,cursor:"pointer"}} value={filterType} onChange={e=>setFilterType(e.target.value)}><option value="">Tipos</option><option value="permiso">Permiso</option><option value="residencia">Residencia</option><option value="contabilidad">Contabilidad</option></select>
-              <select style={{...S.input,flex:1,cursor:"pointer"}} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}><option value="">Todos</option><option value="proceso">Proceso</option><option value="pendiente">Pendiente</option><option value="aprobado">Aprobado</option><option value="rechazado">Rechazado</option></select>
+              <select style={{...S.input,flex:1,cursor:"pointer"}} value={filterType} onChange={e=>setFilterType(e.target.value)}>
+                <option value="">Tipos</option>
+                <option value="empleado">Empleado</option>
+                <option value="compania">Compañía</option>
+                <option value="union_familiar">Unión familiar</option>
+                <option value="rentanier">Rentanier</option>
+                <option value="residencia">Residencia</option>
+                <option value="contabilidad">Contabilidad</option>
+              </select>
+              <select style={{...S.input,flex:1,cursor:"pointer"}} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
+                <option value="">Todos</option>
+                <option value="proceso">En proceso</option>
+                <option value="copy_cliente">Copy cliente</option>
+                <option value="aprobado">Aprobado</option>
+                <option value="rechazado">Rechazado</option>
+              </select>
             </div>
             {filtered.map(c=><ClientCard key={c.id} c={c}/>)}
           </>}
